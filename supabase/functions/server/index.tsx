@@ -69,9 +69,21 @@ app.post("/make-server-2914ec93/requests", async (c) => {
     if (existing) {
       existing.comments = existing.comments || [];
       if (body.comments && body.comments.length > 0) {
-        const ownerId = body.comments[0].ownerId;
-        if (ownerId && existing.comments.some((cmt: any) => cmt.ownerId === ownerId)) {
-          return c.json({ success: false, error: "一个设备不能反复给一首歌评论或投票" }, 400);
+        const incoming = body.comments[0];
+        const ownerId = incoming.ownerId;
+        if (ownerId) {
+          const sameOwner = existing.comments.filter((cmt: any) => cmt.ownerId === ownerId);
+          const hasVote = sameOwner.some((cmt: any) => cmt.isVote === true);
+          const hasOther = sameOwner.some((cmt: any) => cmt.isVote !== true);
+          if (incoming.isVote && hasVote) {
+            return c.json({ success: false, error: "你已经投过票了" }, 400);
+          }
+          if (incoming.isVote && hasOther) {
+            return c.json({ success: false, error: "你已留言，无法再单独投票" }, 400);
+          }
+          if (!incoming.isVote && sameOwner.length > 0) {
+            return c.json({ success: false, error: "一个设备不能反复给一首歌评论或投票" }, 400);
+          }
         }
         existing.comments = [...body.comments, ...existing.comments];
       }

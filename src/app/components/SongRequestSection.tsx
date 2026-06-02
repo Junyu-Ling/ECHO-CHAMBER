@@ -4,6 +4,7 @@ import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { supabase } from "../supabaseClient";
+import { VOTE_NOTE, VOTE_REQUESTER, VOTE_ADD_TITLE, VOTE_CANCEL_TITLE } from "../copy/voteCopy";
 
 const serverUrl = `https://${projectId}.supabase.co/functions/v1/make-server-2914ec93`;
 
@@ -35,6 +36,24 @@ interface Comment {
   requester: string;
   time: string;
   ownerId: string;
+  isVote?: boolean;
+}
+
+function isVoteComment(c: Comment) {
+  return (
+    c.isVote === true ||
+    (c.note === VOTE_NOTE && c.requester === VOTE_REQUESTER)
+  );
+}
+
+function collectVotedIds(list: SongRequest[], clientId: string) {
+  const voted = new Set<number>();
+  for (const r of list) {
+    if (r.comments?.some((c) => c.ownerId === clientId && isVoteComment(c))) {
+      voted.add(r.id);
+    }
+  }
+  return voted;
 }
 
 interface SongRequest {
@@ -62,6 +81,7 @@ export function SongRequestSection() {
   const [nameInput, setNameInput] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [localVotedIds, setLocalVotedIds] = useState<Set<number>>(new Set());
+  const [votingIds, setVotingIds] = useState<Set<number>>(new Set());
 
   // 初始化从localStorage读取已投票记录
   useEffect(() => {
@@ -75,11 +95,13 @@ export function SongRequestSection() {
     }
   }, []);
 
-  // 更新localStorage中的投票记录
   useEffect(() => {
-    if (localVotedIds.size > 0) {
-      localStorage.setItem("void_echo_voted_ids", JSON.stringify(Array.from(localVotedIds)));
-    }
+    if (!clientId) return;
+    setLocalVotedIds(collectVotedIds(requests, clientId));
+  }, [requests, clientId]);
+
+  useEffect(() => {
+    localStorage.setItem("void_echo_voted_ids", JSON.stringify(Array.from(localVotedIds)));
   }, [localVotedIds]);
 
   useEffect(() => {
@@ -94,19 +116,6 @@ export function SongRequestSection() {
         .then((data) => {
           if (data.success) {
             setRequests(data.data);
-            // 核心逻辑：如果歌曲已从服务器删除，则释放该设备的投票限制
-            const activeIds = new Set(data.data.map((r: any) => r.id));
-            setLocalVotedIds((prev) => {
-              const next = new Set(prev);
-              let changed = false;
-              next.forEach((id) => {
-                if (!activeIds.has(id)) {
-                  next.delete(id);
-                  changed = true;
-                }
-              });
-              return changed ? next : prev;
-            });
           } else {
             console.error("Server returned error fetching requests:", data.error);
           }
@@ -166,14 +175,6 @@ export function SongRequestSection() {
               const id = parseInt(key.replace("req:", ""));
               setRequests((prev) => prev.filter((r) => r.id !== id));
               // 同步释放投票限制：如果实时监听到删除，立即允许该设备重新对该 ID 投票
-              setLocalVotedIds((prev) => {
-                if (prev.has(id)) {
-                  const next = new Set(prev);
-                  next.delete(id);
-                  return next;
-                }
-                return prev;
-              });
             }
           }
         }
@@ -191,37 +192,51 @@ export function SongRequestSection() {
   );
   const maxVotes = sorted[0]?.votes ?? 1;
 
-  const handleDeleteComment = async (trackId: number, commentId: string) => {
-    if (!window.confirm("确定要删除你的这条留言/选票吗？")) return;
-
-    // Optimistic UI update
-    setRequests((prev) =>
-      prev.map((r) => {
-        if (r.id === trackId) {
-          const newComments = r.comments.filter((c) => c.commentId !== commentId);
-          return {
-            ...r,
-            comments: newComments,
-            votes: newComments.length
-          };
-        }
-        return r;
-      }).filter(r => r.votes > 0) // Remove if votes drop to 0
-    );
-    setLocalVotedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(trackId);
-      return next;
-    });
-
+  const refetchRequests = async () => {
     try {
-      await fetch(`${serverUrl}/requests/${trackId}/comments/${commentId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ ownerId: clientId }),
-      });
+      const res = await fetch(`${serverUrl}/requests`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) setRequests(data.data);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const applyCommentRemoval = (trackId: number, commentId: string) => {
+    setRequests((prev) =>
+      prev
+        .map((r) => {
+          if (r.id !== trackId) return r;
+          const newComments = r.comments.filter((c) => c.commentId !== commentId);
+          return { ...r, comments: newComments, votes: newComments.length };
+        })
+        .filter((r) => r.votes > 0)
+    );
+  };
+
+  const removeCommentOnServer = async (trackId: number, commentId: string) => {
+    const res = await fetch(`${serverUrl}/requests/${trackId}/comments/${commentId}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ ownerId: clientId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "delete failed");
+    }
+  };
+
+  const handleDeleteComment = async (trackId: number, commentId: string) => {
+    const req = requests.find((r) => r.id === trackId);
+    const target = req?.comments.find((c) => c.commentId === commentId);
+    if (!target) return;
+    if (!window.confirm("确定要删除你的这条留言吗？")) return;
+
+    applyCommentRemoval(trackId, commentId);
+    try {
+      await removeCommentOnServer(trackId, commentId);
     } catch (err) {
-      console.error("Error deleting request:", err);
+      console.error("Error deleting comment:", err);
     }
   };
 
@@ -231,57 +246,76 @@ export function SongRequestSection() {
   };
 
   const handleVote = async (id: number) => {
-    const hasVoted = localVotedIds.has(id);
+    if (votingIds.has(id)) return;
     const existingReq = requests.find((r) => r.id === id);
     if (!existingReq) return;
 
-    if (hasVoted) {
-      // Cancel vote = delete my comment
-      const myComment = existingReq.comments.find((c) => c.ownerId === clientId);
-      if (myComment) {
-        handleDeleteComment(id, myComment.commentId);
+    const myVote = existingReq.comments.find(
+      (c) => c.ownerId === clientId && isVoteComment(c)
+    );
+    const hasVoted = localVotedIds.has(id) || !!myVote;
+
+    setVotingIds((prev) => new Set(prev).add(id));
+
+    try {
+      if (hasVoted && myVote) {
+        applyCommentRemoval(id, myVote.commentId);
+        await removeCommentOnServer(id, myVote.commentId);
+        return;
       }
-    } else {
-      // Add vote = send anonymous comment
+
+      if (hasVoted) return;
+
       const newComment: Comment = {
-        commentId: Date.now().toString() + Math.random().toString(36).substring(2),
-        note: "推荐了这首金曲 🎵",
-        requester: "匿名",
-        time: "刚刚",
+        commentId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        note: VOTE_NOTE,
+        requester: VOTE_REQUESTER,
+        time: "\u521a\u521a",
         ownerId: clientId,
+        isVote: true,
       };
 
-      // Optimistic UI
       setRequests((prev) =>
-        prev.map((r) => {
-          if (r.id === id) {
-            return {
-              ...r,
-              votes: r.votes + 1,
-              comments: [newComment, ...r.comments],
-            };
-          }
-          return r;
-        })
+        prev.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                votes: r.comments.length + 1,
+                comments: [newComment, ...r.comments],
+              }
+            : r
+        )
       );
-      setLocalVotedIds((prev) => new Set(prev).add(id));
-
-      try {
-        await fetch(`${serverUrl}/requests`, {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            id,
-            song: existingReq.song,
-            artist: existingReq.artist,
-            artwork: existingReq.artwork,
-            previewUrl: existingReq.previewUrl,
-            comments: [newComment],
-          }),
-        });
-      } catch (err) {
-        console.error("Error voting (commenting):", err);
+      const res = await fetch(`${serverUrl}/requests`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          id,
+          song: existingReq.song,
+          artist: existingReq.artist,
+          artwork: existingReq.artwork,
+          previewUrl: existingReq.previewUrl,
+          comments: [newComment],
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "vote failed");
       }
+      if (data.data) {
+        setRequests((prev) => prev.map((r) => (r.id === id ? data.data : r)));
+      }
+    } catch (err) {
+      console.error("Error voting:", err);
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("\u7559\u8a00")) alert(msg);
+      await refetchRequests();
+    } finally {
+      setVotingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -290,17 +324,16 @@ export function SongRequestSection() {
     if (!selectedTrack) return;
 
     const trackId = selectedTrack.trackId;
-    const hasVoted = localVotedIds.has(trackId);
-
-    if (hasVoted) {
-      alert("一个设备不能反复给同一首歌评论或投票哦！");
+    const existing = requests.find((r) => r.id === trackId);
+    if (existing?.comments.some((c) => c.ownerId === clientId)) {
+      alert("\u4f60\u5df2\u7ecf\u7559\u8a00\u8fc7\u8fd9\u9996\u6b4c\u4e86");
       return;
     }
 
     const newComment: Comment = {
       commentId: Date.now().toString() + Math.random().toString(36).substring(2),
-      note: noteInput.trim() || "推荐了这首金曲 🎵",
-      requester: nameInput.trim() || "匿名",
+      note: noteInput.trim() || VOTE_NOTE,
+      requester: nameInput.trim() || VOTE_REQUESTER,
       time: "刚刚",
       ownerId: clientId,
     };
@@ -544,6 +577,7 @@ export function SongRequestSection() {
                     rank={sortMode === "hot" ? index + 1 : undefined}
                     maxVotes={maxVotes}
                     onVote={() => handleVote(req.id)}
+                    voteBusy={votingIds.has(req.id)}
                     onDeleteComment={(commentId) => handleDeleteComment(req.id, commentId)}
                     clientId={clientId}
                   />
@@ -636,6 +670,7 @@ function RequestCard({
   onVote,
   onDeleteComment,
   clientId,
+  voteBusy,
 }: {
   request: SongRequest;
   rank?: number;
@@ -643,6 +678,7 @@ function RequestCard({
   onVote: () => void;
   onDeleteComment: (commentId: string) => void;
   clientId: string;
+  voteBusy?: boolean;
 }) {
   const pct = Math.round((request.votes / maxVotes) * 100);
 
@@ -712,15 +748,17 @@ function RequestCard({
         </div>
 
         <button
+          type="button"
           onClick={onVote}
-          className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 transition-all duration-150 hover:opacity-80"
+          disabled={voteBusy}
+          className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 transition-all duration-150 hover:opacity-80 disabled:opacity-40"
           style={{
             border: request.hasVoted ? "1px solid rgba(255,159,212,0.5)" : "1px solid rgba(255,255,255,0.08)",
             background: request.hasVoted ? "rgba(255,159,212,0.08)" : "transparent",
             minWidth: 44,
-            cursor: "pointer"
+            cursor: voteBusy ? "wait" : "pointer",
           }}
-          title={request.hasVoted ? "取消投票" : "给这首歌投票"}
+          title={request.hasVoted ? VOTE_CANCEL_TITLE : VOTE_ADD_TITLE}
         >
           <ChevronUp
             size={13}
