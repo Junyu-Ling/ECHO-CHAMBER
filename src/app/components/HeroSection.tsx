@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { ChevronDown, Disc3 } from "lucide-react";
-import heroImage from "../../imports/fc9ade432714e08066f2002932e6f98b-3.png";
+import { heroImage, heroPlaceholder } from "../lib/preloadHero";
+import { heroAlt, heroBandLabel, heroScrollAria, heroScrollLabel } from "../copy/heroCopy";
 import { ImageWithFallback } from "./ImageWithFallback";
 
 export function HeroSection() {
+  const [hqReady, setHqReady] = useState(false);
+
   const scrollTo = (id: string) => {
     document.querySelector(id)?.scrollIntoView({ behavior: "smooth" });
   };
@@ -14,11 +18,22 @@ export function HeroSection() {
       style={{ minHeight: "100vh", background: "#07070C" }}
     >
       <div className="absolute inset-0 z-0">
+        <img
+          src={heroPlaceholder}
+          alt=""
+          aria-hidden
+          className="w-full h-full object-cover object-center scale-105 blur-md"
+          decoding="async"
+        />
         <ImageWithFallback
           src={heroImage}
-          alt="乐队合照"
-          className="w-full h-full object-cover object-center"
+          alt={heroAlt}
+          className="absolute inset-0 w-full h-full object-cover object-center"
           loading="eager"
+          fetchPriority="high"
+          showSkeleton={false}
+          onLoad={() => setHqReady(true)}
+          style={{ opacity: hqReady ? 1 : 0, transition: "opacity 0.4s ease-out" }}
         />
       </div>
 
@@ -34,7 +49,7 @@ export function HeroSection() {
             }}
           >
             <Disc3 size={11} />
-            SCLSDD乐队
+            {heroBandLabel}
           </div>
         </div>
 
@@ -54,10 +69,10 @@ export function HeroSection() {
       <button
         onClick={() => scrollTo("#videos")}
         className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1.5 group"
-        aria-label="向下滚动"
+        aria-label={heroScrollAria}
       >
         <span className="text-muted-foreground text-xs uppercase tracking-widest opacity-50 group-hover:opacity-100 transition-opacity">
-          scroll
+          {heroScrollLabel}
         </span>
         <ChevronDown size={16} className="text-muted-foreground animate-bounce" />
       </button>

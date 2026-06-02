@@ -62,7 +62,7 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
         >
           <video
             ref={videoRef}
-            src={`${video.videoUrl}?modal=1`}
+            src={video.videoUrl}
             controls
             playsInline
             className="w-full h-full"

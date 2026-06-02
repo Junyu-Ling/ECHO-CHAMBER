@@ -1,19 +1,48 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { Navbar } from "./components/Navbar";
 import { HeroSection } from "./components/HeroSection";
-import { VideosSection } from "./components/VideosSection";
 import { MembersSection } from "./components/MembersSection";
-import { SongRequestSection } from "./components/SongRequestSection";
 import { Footer } from "./components/Footer";
 import { Users } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
+const VideosSection = lazy(() =>
+  import("./components/VideosSection").then((m) => ({ default: m.VideosSection }))
+);
+
+const SongRequestSection = lazy(() =>
+  import("./components/SongRequestSection").then((m) => ({ default: m.SongRequestSection }))
+);
+
+function SectionFallback() {
+  return <div className="py-24 px-6" style={{ background: "#07070C", minHeight: "12rem" }} />;
+}
+
 export default function App() {
   const [onlineCount, setOnlineCount] = useState(1);
+  const [loadBelowFold, setLoadBelowFold] = useState(false);
 
   useEffect(() => {
-    // 使用 Supabase Realtime Presence 追踪真实在线人数
-    const channel = supabase.channel('online-presence', {
+    let cancelled = false;
+    const enable = () => {
+      if (!cancelled) setLoadBelowFold(true);
+    };
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(enable, { timeout: 800 });
+      return () => {
+        cancelled = true;
+        cancelIdleCallback(id);
+      };
+    }
+    const t = window.setTimeout(enable, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, []);
+
+  useEffect(() => {
+    const channel = supabase.channel("online-presence", {
       config: {
         presence: {
           key: Math.random().toString(36).substring(2, 15),
@@ -22,15 +51,13 @@ export default function App() {
     });
 
     channel
-      .on('presence', { event: 'sync' }, () => {
+      .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
-        // 计算当前所有连接的在线终端数量
         const count = Object.keys(state).length;
         setOnlineCount(count > 0 ? count : 1);
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          // 开始追踪当前设备
+        if (status === "SUBSCRIBED") {
           await channel.track({
             online_at: new Date().toISOString(),
           });
@@ -47,19 +74,24 @@ export default function App() {
       <Navbar />
       <main>
         <HeroSection />
-        <VideosSection />
-        <MembersSection />
-        <SongRequestSection />
+        {loadBelowFold ? (
+          <Suspense fallback={<SectionFallback />}>
+            <VideosSection />
+            <MembersSection />
+            <SongRequestSection />
+          </Suspense>
+        ) : (
+          <SectionFallback />
+        )}
       </main>
       <Footer />
 
-      {/* 在线人数显示 */}
       <div
         className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-md border transition-all duration-500 group hover:scale-105"
         style={{
           background: "rgba(14, 14, 28, 0.8)",
           borderColor: "rgba(255, 159, 212, 0.2)",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.3)"
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
         }}
       >
         <div className="relative flex h-2 w-2">

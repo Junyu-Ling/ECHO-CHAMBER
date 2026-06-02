@@ -1,4 +1,4 @@
-import { SectionHeader } from "./VideosSection";
+import { SectionHeader } from "./SectionHeader";
 import kimPhoto from "../../imports/71f668c2a7fba05551d1d606f7d8071d.jpg";
 import nancyPhoto from "../../imports/lQLPKdR7pV4uPB_NAmbNAbuwfOwc6P3wB3IJ8mfbtWyQAA_443_614.png";
 import maikePhoto from "../../imports/25DC9DC1-439E-4229-AAD5-1B6E8BCA7B10.png";
@@ -164,7 +164,9 @@ function MemberCard({ member }: { member: (typeof members)[number] }) {
         <ImageWithFallback
           src={member.photo}
           alt={member.name}
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          className="relative w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          loading="lazy"
+          decoding="async"
         />
         <div
           className="absolute inset-0 transition-opacity duration-300"

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2 } from "lucide-react";
-import { SectionHeader } from "./VideosSection";
+import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { supabase } from "../supabaseClient";
