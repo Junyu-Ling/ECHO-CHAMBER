@@ -3,7 +3,7 @@ import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Tra
 import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
 import { supabase } from "../supabaseClient";
-import { fetchAllRequests, postRequestsBody } from "../lib/requestsApi";
+import { deleteCommentViaApi, fetchAllRequests, postRequestsBody } from "../lib/requestsApi";
 import { normalizeRequest } from "../lib/requestsStore";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
 import { VOTE_NOTE, VOTE_REQUESTER, VOTE_ADD_TITLE, VOTE_CANCEL_TITLE } from "../copy/voteCopy";
@@ -267,12 +267,7 @@ export function SongRequestSection() {
   };
 
   const removeCommentOnServer = async (trackId: number, commentId: string) => {
-    await postRequestsBody({
-      action: "deleteComment",
-      id: trackId,
-      commentId,
-      ownerId: clientId,
-    });
+    await deleteCommentViaApi(trackId, commentId, clientId);
   };
 
   const handleDeleteComment = async (trackId: number, commentId: string) => {
