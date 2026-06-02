@@ -1,7 +1,8 @@
 import { SectionHeader } from "./SectionHeader";
 import kimPhoto from "../../imports/71f668c2a7fba05551d1d606f7d8071d.jpg";
 import nancyPhoto from "../../imports/lQLPKdR7pV4uPB_NAmbNAbuwfOwc6P3wB3IJ8mfbtWyQAA_443_614.png";
-import maikePhoto from "../../imports/25DC9DC1-439E-4229-AAD5-1B6E8BCA7B10.png";
+import baiQianhePhoto from "../../assets/members/bai-qianhe.webp";
+import guChenyangPhoto from "../../assets/members/gu-chenyang.webp";
 import alexanderPhoto from "../../imports/ad81c106b9718346d60bf647dce4c108.jpg";
 import mikePhoto from "../../imports/bcc1145200430316445221f235a19070.jpg";
 import richardPhoto from "../../assets/members/richard.webp";
@@ -81,7 +82,7 @@ const members = [
     role: "主唱",
     roleEn: "中国部 G12C1",
     bio: "舞台上的光影捕手，用歌声传递着不屈的青春力量",
-    photo: "https://images.unsplash.com/photo-1642692018315-3e8f09e80a61?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMHlvdW5nJTIwZmVtYWxlJTIwZ3VpdGFyaXN0fGVufDF8fHx8MTc4MDMxMzgwNnww&ixlib=rb-4.1.0&q=80&w=1080",
+    photo: guChenyangPhoto,
   },
   {
     id: 8,
@@ -117,7 +118,7 @@ const members = [
     role: "键盘手（全能预备队员）",
     roleEn: "中国部 G10C2",
     bio: "在琴键上飞，在后台忙，哪里需要就往哪里钻的乐队万能补丁",
-    photo: maikePhoto,
+    photo: baiQianhePhoto,
   },
   {
     id: 13,
