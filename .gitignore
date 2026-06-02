@@ -8,3 +8,5 @@ Thumbs.db
 !.env.example
 .cursor/projects/
 *.local
+scripts/member-sources/*.png
+scripts/member-sources/*.jpg

@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,16 +30,21 @@ for (const id of [1, 2, 3]) {
 }
 
 const membersDir = path.join(assetsDir, "members");
-const importsDir = path.join(root, "src/imports");
+const memberSourcesDir = path.join(root, "scripts/member-sources");
 await mkdir(membersDir, { recursive: true });
 
 const memberSources = [
-  ["member-shen-xinyu.png", "shen-xinyu.webp"],
-  ["member-richard.png", "richard.webp"],
+  ["shen-xinyu.png", "shen-xinyu.webp"],
+  ["richard.png", "richard.webp"],
 ];
 
 for (const [input, output] of memberSources) {
-  await sharp(path.join(importsDir, input))
+  const inputPath = path.join(memberSourcesDir, input);
+  if (!existsSync(inputPath)) {
+    console.warn(`Skip ${output}: place source at scripts/member-sources/${input}`);
+    continue;
+  }
+  await sharp(inputPath)
     .resize(800, 1067, { fit: "cover", position: "centre" })
     .webp({ quality: 85 })
     .toFile(path.join(membersDir, output));
