@@ -23,11 +23,17 @@ function normalizeComment(cmt) {
   };
 }
 
+function stamp(req) {
+  req.updatedAt = Date.now();
+  return req;
+}
+
 export function normalizeRequest(req) {
   if (!req) return req;
   if (req.comments !== undefined) {
     return {
       ...req,
+      updatedAt: req.updatedAt || req.createdAt || Date.now(),
       comments: (req.comments || []).map(normalizeComment),
     };
   }
@@ -73,7 +79,7 @@ export async function toggleCommentLike(trackId, commentId, ownerId) {
   const comment = normalizeComment(reqData.comments[idx]);
   comment.likedBy = toggleLikedBy(comment.likedBy, ownerId);
   reqData.comments[idx] = comment;
-  await kv.kvSet(key, reqData);
+  await kv.kvSet(key, stamp(reqData));
   return { success: true, data: normalizeRequest(reqData) };
 }
 
@@ -88,7 +94,7 @@ export async function toggleReplyLike(trackId, commentId, replyId, ownerId) {
   reply.likedBy = toggleLikedBy(reply.likedBy, ownerId);
   comment.replies[rIdx] = reply;
   reqData.comments[idx] = comment;
-  await kv.kvSet(key, reqData);
+  await kv.kvSet(key, stamp(reqData));
   return { success: true, data: normalizeRequest(reqData) };
 }
 
@@ -115,7 +121,7 @@ export async function addReply(trackId, commentId, reply) {
     }),
   ];
   reqData.comments[idx] = comment;
-  await kv.kvSet(key, reqData);
+  await kv.kvSet(key, stamp(reqData));
   return { success: true, data: normalizeRequest(reqData) };
 }
 
@@ -133,7 +139,7 @@ export async function deleteReply(trackId, commentId, replyId, ownerId) {
     throw Object.assign(new Error("Unauthorized or reply not found"), { status: 403 });
   }
   reqData.comments[idx] = comment;
-  await kv.kvSet(key, reqData);
+  await kv.kvSet(key, stamp(reqData));
   return { success: true, data: normalizeRequest(reqData) };
 }
 
@@ -154,7 +160,7 @@ export async function deleteComment(trackId, commentId, ownerId) {
     await kv.kvDel(key);
     return { success: true, deleted: true };
   }
-  await kv.kvSet(key, reqData);
+  await kv.kvSet(key, stamp(reqData));
   return { success: true, data: normalizeRequest(reqData) };
 }
 
@@ -237,7 +243,7 @@ export async function postRequest(body) {
     }
     existing.comments = existing.comments.map(normalizeComment);
     existing.votes = existing.comments.length;
-    await kv.kvSet(key, existing);
+    await kv.kvSet(key, stamp(existing));
     return { status: 200, body: { success: true, data: normalizeRequest(existing) } };
   }
 
@@ -245,6 +251,6 @@ export async function postRequest(body) {
   if (!reqData.comments) reqData.comments = [];
   reqData.createdAt = Date.now();
   reqData.votes = reqData.comments.length;
-  await kv.kvSet(key, reqData);
+  await kv.kvSet(key, stamp(reqData));
   return { status: 200, body: { success: true, data: reqData } };
 }

@@ -82,6 +82,41 @@ function normalizeRequestsList(list: SongRequest[]) {
   return list.map(normalizeRequestClient);
 }
 
+function getTrackTimestamp(req: SongRequest) {
+  return req.updatedAt ?? req.createdAt ?? 0;
+}
+
+/** Prefer newer server data; never let stale poll/realtime overwrite a successful local edit. */
+function mergeRequestsList(prev: SongRequest[], incoming: SongRequest[]) {
+  const prevById = new Map(prev.map((r) => [r.id, r]));
+  return incoming.map((remote) => {
+    const normalized = normalizeRequestClient(remote);
+    const local = prevById.get(normalized.id);
+    if (!local) return normalized;
+    return getTrackTimestamp(normalized) >= getTrackTimestamp(local)
+      ? normalized
+      : local;
+  });
+}
+
+function applyTrackFromRemote(prev: SongRequest[], remote: SongRequest) {
+  const normalized = normalizeRequestClient(remote);
+  const idx = prev.findIndex((r) => r.id === normalized.id);
+  if (idx < 0) {
+    if (!normalized.comments?.length) return prev;
+    return [normalized, ...prev];
+  }
+  if (getTrackTimestamp(normalized) < getTrackTimestamp(prev[idx])) {
+    return prev;
+  }
+  if (!normalized.comments?.length) {
+    return prev.filter((r) => r.id !== normalized.id);
+  }
+  const next = [...prev];
+  next[idx] = normalized;
+  return next;
+}
+
 function isVoteComment(c: Comment) {
   return (
     c.isVote === true ||
@@ -108,6 +143,7 @@ interface SongRequest {
   votes: number;
   comments: Comment[];
   createdAt: number;
+  updatedAt?: number;
   hasVoted?: boolean;
 }
 
@@ -128,6 +164,16 @@ export function SongRequestSection() {
   const [replyingKey, setReplyingKey] = useState<string | null>(null);
   const [submittingReplyKey, setSubmittingReplyKey] = useState<string | null>(null);
   const [likingKeys, setLikingKeys] = useState<Set<string>>(new Set());
+
+  const fetchGenerationRef = useRef(0);
+  const mutatingCountRef = useRef(0);
+
+  const beginMutation = () => {
+    mutatingCountRef.current += 1;
+  };
+  const endMutation = () => {
+    mutatingCountRef.current = Math.max(0, mutatingCountRef.current - 1);
+  };
 
   // 初始化从localStorage读取已投票记录
   useEffect(() => {
@@ -151,85 +197,88 @@ export function SongRequestSection() {
   }, [localVotedIds]);
 
   useEffect(() => {
-    const fetchData = () => {
-      fetch(requestsApiBase, {
-        headers: getAuthHeaders(),
-      })
-        .then((res) => {
-          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-          return res.json();
-        })
-        .then((data) => {
-          if (data.success) {
-            setRequests(normalizeRequestsList(data.data));
-          } else {
-            console.error("Server returned error fetching requests:", data.error);
-          }
-          setLoading(false);
-        })
-        .catch((err) => {
-          console.error("Network or parsing error fetching requests:", err);
-          setLoading(false);
-        });
+    let cancelled = false;
+
+    const fetchInitial = async () => {
+      const gen = ++fetchGenerationRef.current;
+      try {
+        const res = await fetch(requestsApiBase, { headers: getAuthHeaders() });
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        const data = await res.json();
+        if (cancelled || gen !== fetchGenerationRef.current) return;
+        if (data.success) {
+          setRequests((prev) =>
+            mergeRequestsList(prev, normalizeRequestsList(data.data))
+          );
+        } else {
+          console.error("Server returned error fetching requests:", data.error);
+        }
+      } catch (err) {
+        console.error("Network or parsing error fetching requests:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
 
-    // Fetch initial data
-    fetchData();
+    fetchInitial();
 
-    // Set up 5s polling interval as requested
-    const interval = setInterval(fetchData, 5000);
-
-    // Realtime subscription
     const channel = supabase
-      .channel("kv-changes")
+      .channel("kv-changes-requests")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "kv_store_2914ec93" },
         (payload) => {
+          if (mutatingCountRef.current > 0) return;
+
           if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
             const key = payload.new.key as string;
-            if (!key.startsWith("req:")) return;
-            
+            if (!key?.startsWith("req:")) return;
+
             let newReq = payload.new.value;
-            // Handle migration format just in case it comes through raw
             if (newReq && !newReq.comments) {
               newReq = {
                 ...newReq,
-                comments: newReq.note || newReq.requester ? [{
-                  commentId: newReq.id.toString(),
-                  note: newReq.note || "",
-                  requester: newReq.requester || "匿名",
-                  time: newReq.time || "刚刚",
-                  ownerId: newReq.ownerId || ""
-                }] : [],
-                createdAt: newReq.createdAt || newReq.id
+                comments:
+                  newReq.note || newReq.requester
+                    ? [
+                        {
+                          commentId: newReq.id?.toString() || Date.now().toString(),
+                          note: newReq.note || "",
+                          requester: newReq.requester || "匿名",
+                          time: newReq.time || "刚刚",
+                          ownerId: newReq.ownerId || "",
+                        },
+                      ]
+                    : [],
+                createdAt: newReq.createdAt || newReq.id,
               };
             }
 
             if (newReq) {
-              const normalized = normalizeRequestClient(newReq as SongRequest);
-              setRequests((prev) => {
-                const exists = prev.find((r) => r.id === normalized.id);
-                if (exists) {
-                  return prev.map((r) => (r.id === normalized.id ? normalized : r));
-                }
-                return [normalized, ...prev];
-              });
+              setRequests((prev) =>
+                applyTrackFromRemote(prev, newReq as SongRequest)
+              );
             }
           } else if (payload.eventType === "DELETE") {
-            const key = payload.old.key as string;
-            if (key && key.startsWith("req:")) {
-              const id = parseInt(key.replace("req:", ""));
-              setRequests((prev) => prev.filter((r) => r.id !== id));
-              // 同步释放投票限制：如果实时监听到删除，立即允许该设备重新对该 ID 投票
+            const key = payload.old?.key as string;
+            if (key?.startsWith("req:")) {
+              const id = parseInt(key.replace("req:", ""), 10);
+              if (!Number.isNaN(id)) {
+                setRequests((prev) => prev.filter((r) => r.id !== id));
+              }
             }
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.error("Realtime subscription error on kv_store_2914ec93");
+        }
+      });
 
     return () => {
-      clearInterval(interval);
+      cancelled = true;
+      fetchGenerationRef.current += 1;
       supabase.removeChannel(channel);
     };
   }, []);
@@ -240,10 +289,16 @@ export function SongRequestSection() {
   const maxVotes = sorted[0]?.votes ?? 1;
 
   const refetchRequests = async () => {
+    const gen = ++fetchGenerationRef.current;
     try {
       const res = await fetch(requestsApiBase, { headers: getAuthHeaders() });
       const data = await res.json();
-      if (data.success) setRequests(normalizeRequestsList(data.data));
+      if (gen !== fetchGenerationRef.current) return;
+      if (data.success) {
+        setRequests((prev) =>
+          mergeRequestsList(prev, normalizeRequestsList(data.data))
+        );
+      }
     } catch {
       /* ignore */
     }
@@ -286,11 +341,16 @@ export function SongRequestSection() {
     if (!target) return;
     if (!window.confirm("确定要删除你的这条留言吗？")) return;
 
+    const snapshot = requests;
     applyCommentRemoval(trackId, commentId);
+    beginMutation();
     try {
       await removeCommentOnServer(trackId, commentId);
     } catch (err) {
       console.error("Error deleting comment:", err);
+      setRequests(snapshot);
+    } finally {
+      endMutation();
     }
   };
 
@@ -343,6 +403,7 @@ export function SongRequestSection() {
     applyReplyUpdate(trackId, commentId, (replies) => [...replies, newReply]);
     setReplyingKey(null);
 
+    beginMutation();
     try {
       const data = await postRequestsBody({
         action: "addReply",
@@ -355,8 +416,11 @@ export function SongRequestSection() {
       }
     } catch (err) {
       console.error("Error adding reply:", err);
-      await refetchRequests();
+      applyReplyUpdate(trackId, commentId, (replies) =>
+        replies.filter((r) => r.replyId !== newReply.replyId)
+      );
     } finally {
+      endMutation();
       setSubmittingReplyKey(null);
     }
   };
@@ -372,6 +436,7 @@ export function SongRequestSection() {
         if (r.id !== trackId) return r;
         return {
           ...r,
+          updatedAt: Date.now(),
           comments: r.comments.map((c) =>
             c.commentId === commentId
               ? { ...c, likedBy: toggleLikedByList(c.likedBy, clientId) }
@@ -381,6 +446,7 @@ export function SongRequestSection() {
       })
     );
 
+    beginMutation();
     try {
       const data = await postLikeAction({
         action: "toggleCommentLike",
@@ -391,8 +457,8 @@ export function SongRequestSection() {
     } catch (err) {
       console.error("Error toggling comment like:", err);
       setRequests(snapshot);
-      await refetchRequests();
     } finally {
+      endMutation();
       setLikingKeys((prev) => {
         const next = new Set(prev);
         next.delete(likeKey);
@@ -416,6 +482,7 @@ export function SongRequestSection() {
         if (r.id !== trackId) return r;
         return {
           ...r,
+          updatedAt: Date.now(),
           comments: r.comments.map((c) => {
             if (c.commentId !== commentId) return c;
             return {
@@ -431,6 +498,7 @@ export function SongRequestSection() {
       })
     );
 
+    beginMutation();
     try {
       const data = await postLikeAction({
         action: "toggleReplyLike",
@@ -442,8 +510,8 @@ export function SongRequestSection() {
     } catch (err) {
       console.error("Error toggling reply like:", err);
       setRequests(snapshot);
-      await refetchRequests();
     } finally {
+      endMutation();
       setLikingKeys((prev) => {
         const next = new Set(prev);
         next.delete(likeKey);
@@ -455,10 +523,16 @@ export function SongRequestSection() {
   const handleDeleteReply = async (trackId: number, commentId: string, replyId: string) => {
     if (!window.confirm(REPLY_DELETE_CONFIRM)) return;
 
+    const req = requests.find((r) => r.id === trackId);
+    const comment = req?.comments.find((c) => c.commentId === commentId);
+    const removed = comment?.replies?.find((r) => r.replyId === replyId);
+    if (!removed) return;
+
     applyReplyUpdate(trackId, commentId, (replies) =>
       replies.filter((r) => r.replyId !== replyId)
     );
 
+    beginMutation();
     try {
       const data = await postRequestsBody({
         action: "deleteReply",
@@ -472,7 +546,9 @@ export function SongRequestSection() {
       }
     } catch (err) {
       console.error("Error deleting reply:", err);
-      await refetchRequests();
+      applyReplyUpdate(trackId, commentId, (replies) => [...replies, removed]);
+    } finally {
+      endMutation();
     }
   };
 
@@ -492,11 +568,18 @@ export function SongRequestSection() {
     const hasVoted = localVotedIds.has(id) || !!myVote;
 
     setVotingIds((prev) => new Set(prev).add(id));
+    beginMutation();
 
     try {
       if (hasVoted && myVote) {
+        const voteSnapshot = requests;
         applyCommentRemoval(id, myVote.commentId);
-        await removeCommentOnServer(id, myVote.commentId);
+        try {
+          await removeCommentOnServer(id, myVote.commentId);
+        } catch (err) {
+          console.error("Error canceling vote:", err);
+          setRequests(voteSnapshot);
+        }
         return;
       }
 
@@ -518,6 +601,7 @@ export function SongRequestSection() {
           r.id === id
             ? {
                 ...r,
+                updatedAt: Date.now(),
                 votes: r.comments.length + 1,
                 comments: [newComment, ...r.comments],
               }
@@ -541,7 +625,7 @@ export function SongRequestSection() {
         throw new Error(data.error || "vote failed");
       }
       if (data.data) {
-        setRequests((prev) => prev.map((r) => (r.id === id ? data.data : r)));
+        mergeTrackFromServer(id, data.data);
       }
     } catch (err) {
       console.error("Error voting:", err);
@@ -549,6 +633,7 @@ export function SongRequestSection() {
       if (msg.includes("\u7559\u8a00")) alert(msg);
       await refetchRequests();
     } finally {
+      endMutation();
       setVotingIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -621,22 +706,22 @@ export function SongRequestSection() {
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 3000);
 
+    const submitSnapshot = requests;
+    beginMutation();
     try {
-      const res = await fetch(requestsApiBase, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!data.success) {
-         // 如果后端返回明确的错误信息，则显示，否则静默处理（因为UI已经乐观更新了）
-         console.warn("Server submission error:", data.error);
-         if (data.error && data.error.includes("反复")) {
-           alert(data.error);
-         }
+      const data = await postRequestsBody(payload);
+      if (data.data) {
+        mergeTrackFromServer(trackId, data.data);
       }
     } catch (err) {
       console.error("Error submitting request:", err);
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("\u53cd\u590d") || msg.includes("\u7559\u8a00")) {
+        alert(msg);
+      }
+      setRequests(submitSnapshot);
+    } finally {
+      endMutation();
     }
   };
 

@@ -46,11 +46,17 @@ function normalizeComment(cmt: any) {
   };
 }
 
+function stampReq(req: any) {
+  req.updatedAt = Date.now();
+  return req;
+}
+
 function normalizeRequest(req: any) {
   if (!req) return req;
   if (req.comments !== undefined) {
     return {
       ...req,
+      updatedAt: req.updatedAt || req.createdAt || Date.now(),
       comments: (req.comments || []).map(normalizeComment),
     };
   }
@@ -88,7 +94,7 @@ async function toggleCommentLikeInStore(
   const comment = normalizeComment(reqData.comments[idx]);
   comment.likedBy = toggleLikedBy(comment.likedBy, ownerId);
   reqData.comments[idx] = comment;
-  await kv.set(key, reqData);
+  await kv.set(key, stampReq(reqData));
   return normalizeRequest(reqData);
 }
 
@@ -116,7 +122,7 @@ async function toggleReplyLikeInStore(
   reply.likedBy = toggleLikedBy(reply.likedBy, ownerId);
   comment.replies[rIdx] = reply;
   reqData.comments[idx] = comment;
-  await kv.set(key, reqData);
+  await kv.set(key, stampReq(reqData));
   return normalizeRequest(reqData);
 }
 
@@ -150,7 +156,7 @@ async function addReplyInStore(
     }),
   ];
   reqData.comments[idx] = comment;
-  await kv.set(key, reqData);
+  await kv.set(key, stampReq(reqData));
   return normalizeRequest(reqData);
 }
 
@@ -176,7 +182,7 @@ async function deleteReplyInStore(
     throw new Error("Unauthorized or reply not found");
   }
   reqData.comments[idx] = comment;
-  await kv.set(key, reqData);
+  await kv.set(key, stampReq(reqData));
   return normalizeRequest(reqData);
 }
 
@@ -201,7 +207,7 @@ async function deleteCommentInStore(
     await kv.del(key);
     return { deleted: true };
   }
-  await kv.set(key, reqData);
+  await kv.set(key, stampReq(reqData));
   return { data: normalizeRequest(reqData) };
 }
 
@@ -340,14 +346,14 @@ app.post("/make-server-2914ec93/requests", async (c) => {
       }
       existing.comments = existing.comments.map(normalizeComment);
       existing.votes = existing.comments.length;
-      await kv.set(key, existing);
+      await kv.set(key, stampReq(existing));
       return c.json({ success: true, data: normalizeRequest(existing) });
     } else {
       const reqData = normalizeRequest({ ...body });
       if (!reqData.comments) reqData.comments = [];
       reqData.createdAt = Date.now();
       reqData.votes = reqData.comments.length;
-      await kv.set(key, reqData);
+      await kv.set(key, stampReq(reqData));
       return c.json({ success: true, data: reqData });
     }
   } catch (error: any) {
@@ -379,7 +385,7 @@ app.delete("/make-server-2914ec93/requests/:id/comments/:commentId", async (c) =
         await kv.del(key);
         return c.json({ success: true, deleted: true });
       }
-      await kv.set(key, reqData);
+      await kv.set(key, stampReq(reqData));
       return c.json({ success: true, data: normalizeRequest(reqData) });
     }
     return c.json({ success: false, error: "No comments" }, 404);
@@ -428,7 +434,7 @@ app.post("/make-server-2914ec93/requests/:id/comments/:commentId/replies", async
       likedBy: [],
     })];
     reqData.comments[idx] = comment;
-    await kv.set(key, reqData);
+    await kv.set(key, stampReq(reqData));
     return c.json({ success: true, data: normalizeRequest(reqData) });
   } catch (error: any) {
     console.error("Error adding reply:", error);
@@ -465,7 +471,7 @@ app.delete("/make-server-2914ec93/requests/:id/comments/:commentId/replies/:repl
       return c.json({ success: false, error: "Unauthorized or reply not found" }, 403);
     }
     reqData.comments[idx] = comment;
-    await kv.set(key, reqData);
+    await kv.set(key, stampReq(reqData));
     return c.json({ success: true, data: normalizeRequest(reqData) });
   } catch (error: any) {
     console.error("Error deleting reply:", error);
