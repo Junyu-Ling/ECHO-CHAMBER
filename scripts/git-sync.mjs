@@ -11,12 +11,15 @@ const BRANCH = "ECHO-CHAMBER";
 const SYNC_MAIN = "main";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+const DEFAULT_GIT_NAME = "LingJ";
+const DEFAULT_GIT_EMAIL = "LIngJunYu20081201@gmail.com";
+
 const gitEnv = {
   ...process.env,
-  GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME || "LingJ",
-  GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL || "noreply@local",
-  GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME || process.env.GIT_AUTHOR_NAME || "LingJ",
-  GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL || process.env.GIT_AUTHOR_EMAIL || "noreply@local",
+  GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME || DEFAULT_GIT_NAME,
+  GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL || DEFAULT_GIT_EMAIL,
+  GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME || process.env.GIT_AUTHOR_NAME || DEFAULT_GIT_NAME,
+  GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL || process.env.GIT_AUTHOR_EMAIL || DEFAULT_GIT_EMAIL,
 };
 
 function run(cmd, opts = {}) {
