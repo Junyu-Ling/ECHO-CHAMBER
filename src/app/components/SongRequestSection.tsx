@@ -17,9 +17,16 @@ import {
   REPLY_NAME_PLACEHOLDER,
   REPLY_PLACEHOLDER,
   REPLY_SUBMIT,
-  REPLY_TIME_NOW,
 } from "../copy/replyCopy";
 import { LIKE_BTN, LIKE_TITLE, UNLIKE_TITLE } from "../copy/likeCopy";
+import {
+  formatCommentTime,
+  formatReplyTime,
+  resolveCommentCreatedAt,
+  resolveReplyCreatedAt,
+  stampCommentFields,
+  stampReplyFields,
+} from "../lib/commentTime";
 
 // requestsApiBase + getAuthHeaders from ../lib/requestsApi
 
@@ -325,14 +332,13 @@ export function SongRequestSection() {
     const replyKey = `${trackId}:${commentId}`;
     if (submittingReplyKey === replyKey) return;
 
-    const newReply: Reply = {
+    const newReply: Reply = stampReplyFields({
       replyId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       note: trimmed,
       requester: requester.trim() || REPLY_DEFAULT_NAME,
-      time: REPLY_TIME_NOW,
       ownerId: clientId,
       likedBy: [],
-    };
+    });
 
     setSubmittingReplyKey(replyKey);
     applyReplyUpdate(trackId, commentId, (replies) => [...replies, newReply]);
@@ -520,16 +526,15 @@ export function SongRequestSection() {
 
       if (hasVoted) return;
 
-      const newComment: Comment = {
+      const newComment: Comment = stampCommentFields({
         commentId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         note: VOTE_NOTE,
         requester: VOTE_REQUESTER,
-        time: "\u521a\u521a",
         ownerId: clientId,
         isVote: true,
         replies: [],
         likedBy: [],
-      };
+      });
 
       setRequests((prev) =>
         prev.map((r) =>
@@ -580,15 +585,14 @@ export function SongRequestSection() {
       return;
     }
 
-    const newComment: Comment = {
-      commentId: Date.now().toString() + Math.random().toString(36).substring(2),
+    const newComment: Comment = stampCommentFields({
+      commentId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       note: noteInput.trim() || VOTE_NOTE,
       requester: nameInput.trim() || VOTE_REQUESTER,
-      time: "刚刚",
       ownerId: clientId,
       replies: [],
       likedBy: [],
-    };
+    });
 
     const commentsToSubmit = [newComment];
 
@@ -1147,7 +1151,16 @@ function CommentItem({
     >
       <div className="flex items-center gap-1.5 mb-1">
         <span className="text-foreground text-xs font-medium opacity-90">{comment.requester}</span>
-        <span className="text-muted-foreground text-[10px] opacity-50">{comment.time}</span>
+        <time
+          dateTime={
+            resolveCommentCreatedAt(comment) > 0
+              ? new Date(resolveCommentCreatedAt(comment)).toISOString()
+              : undefined
+          }
+          className="text-muted-foreground text-[10px] opacity-50 tabular-nums"
+        >
+          {formatCommentTime(comment)}
+        </time>
       </div>
 
       <div className="flex items-start gap-2">
@@ -1189,7 +1202,16 @@ function CommentItem({
                   <span className="text-foreground text-[11px] font-medium opacity-80">
                     {reply.requester}
                   </span>
-                  <span className="text-muted-foreground text-[10px] opacity-40">{reply.time}</span>
+                  <time
+                    dateTime={
+                      resolveReplyCreatedAt(reply) > 0
+                        ? new Date(resolveReplyCreatedAt(reply)).toISOString()
+                        : undefined
+                    }
+                    className="text-muted-foreground text-[10px] opacity-40 tabular-nums"
+                  >
+                    {formatReplyTime(reply)}
+                  </time>
                 </div>
                 <div className="flex items-start gap-2">
                   <p className="flex-1 min-w-0 text-muted-foreground text-[11px] leading-relaxed opacity-75 break-words">

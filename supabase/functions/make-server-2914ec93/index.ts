@@ -23,9 +23,22 @@ app.use(
 // Health check
 app.get("/make-server-2914ec93/health", (c) => c.json({ status: "ok" }));
 
+function inferTimestampFromId(id: string): number | undefined {
+  const m = /^(\d{10,13})/.exec(id);
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return n < 1e12 ? n * 1000 : n;
+}
+
 function normalizeReply(reply: any) {
+  const createdAt =
+    typeof reply.createdAt === "number" && reply.createdAt > 0
+      ? reply.createdAt
+      : inferTimestampFromId(reply.replyId);
   return {
     ...reply,
+    ...(createdAt ? { createdAt } : {}),
     likedBy: Array.isArray(reply.likedBy) ? reply.likedBy : [],
   };
 }
@@ -39,8 +52,13 @@ function toggleLikedBy(likedBy: string[], ownerId: string) {
 }
 
 function normalizeComment(cmt: any) {
+  const createdAt =
+    typeof cmt.createdAt === "number" && cmt.createdAt > 0
+      ? cmt.createdAt
+      : inferTimestampFromId(cmt.commentId);
   return {
     ...cmt,
+    ...(createdAt ? { createdAt } : {}),
     likedBy: Array.isArray(cmt.likedBy) ? cmt.likedBy : [],
     replies: Array.isArray(cmt.replies) ? cmt.replies.map(normalizeReply) : [],
   };
@@ -144,13 +162,15 @@ async function addReplyInStore(
   if (idx < 0) throw new Error("Comment not found");
 
   const comment = normalizeComment(reqData.comments[idx]);
+  const replyCreatedAt = Date.now();
   comment.replies = [
     ...(comment.replies || []),
     normalizeReply({
-      replyId: reply.replyId || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      replyId: reply.replyId || `${replyCreatedAt}-${Math.random().toString(36).slice(2)}`,
       note,
       requester: (reply.requester || "匿名").trim() || "匿名",
-      time: reply.time || "刚刚",
+      createdAt: reply.createdAt || replyCreatedAt,
+      time: reply.time || new Date(replyCreatedAt).toISOString().slice(0, 16).replace("T", " "),
       ownerId: reply.ownerId,
       likedBy: [],
     }),
@@ -443,11 +463,13 @@ app.post("/make-server-2914ec93/requests/:id/comments/:commentId/replies", async
     }
 
     const comment = normalizeComment(reqData.comments[idx]);
+    const replyCreatedAt = Date.now();
     comment.replies = [...(comment.replies || []), normalizeReply({
-      replyId: reply.replyId || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      replyId: reply.replyId || `${replyCreatedAt}-${Math.random().toString(36).slice(2)}`,
       note,
       requester: (reply.requester || "匿名").trim() || "匿名",
-      time: reply.time || "刚刚",
+      createdAt: reply.createdAt || replyCreatedAt,
+      time: reply.time || new Date(replyCreatedAt).toISOString().slice(0, 16).replace("T", " "),
       ownerId: reply.ownerId,
       likedBy: [],
     })];

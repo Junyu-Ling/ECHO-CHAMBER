@@ -3,6 +3,8 @@ export interface Reply {
   note: string;
   requester: string;
   time: string;
+  /** 留言时间（毫秒） */
+  createdAt?: number;
   ownerId: string;
   likedBy?: string[];
 }
@@ -12,6 +14,8 @@ export interface Comment {
   note: string;
   requester: string;
   time: string;
+  /** 留言时间（毫秒） */
+  createdAt?: number;
   ownerId: string;
   isVote?: boolean;
   replies?: Reply[];

@@ -1,4 +1,5 @@
 import { supabase } from "../supabaseClient";
+import { inferTimestampFromId } from "./commentTime";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
 
 const TABLE = "kv_store_2914ec93";
@@ -6,7 +7,15 @@ const TABLE = "kv_store_2914ec93";
 export type { SongRequest };
 
 function normalizeReply(reply: Reply): Reply {
-  return { ...reply, likedBy: Array.isArray(reply.likedBy) ? reply.likedBy : [] };
+  const createdAt =
+    typeof reply.createdAt === "number" && reply.createdAt > 0
+      ? reply.createdAt
+      : inferTimestampFromId(reply.replyId);
+  return {
+    ...reply,
+    ...(createdAt ? { createdAt } : {}),
+    likedBy: Array.isArray(reply.likedBy) ? reply.likedBy : [],
+  };
 }
 
 function toggleLikedBy(likedBy: string[], ownerId: string) {
@@ -18,8 +27,13 @@ function toggleLikedBy(likedBy: string[], ownerId: string) {
 }
 
 function normalizeComment(cmt: Comment): Comment {
+  const createdAt =
+    typeof cmt.createdAt === "number" && cmt.createdAt > 0
+      ? cmt.createdAt
+      : inferTimestampFromId(cmt.commentId);
   return {
     ...cmt,
+    ...(createdAt ? { createdAt } : {}),
     likedBy: Array.isArray(cmt.likedBy) ? cmt.likedBy : [],
     replies: Array.isArray(cmt.replies) ? cmt.replies.map(normalizeReply) : [],
   };
