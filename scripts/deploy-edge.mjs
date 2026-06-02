@@ -15,10 +15,10 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const projectRef = "fmhxulxydthrldwuavuc";
-const fnDir = join(root, "supabase", "functions", "make-server-2914ec93", "index.tsx");
+const fnDir = join(root, "supabase", "functions", "make-server-2914ec93", "index.ts");
 
 if (!existsSync(fnDir)) {
-  console.error("缺少 Edge 源码:", fnDir);
+  console.error("缺少 Edge 入口 index.ts（CLI 不认 .tsx）:", fnDir);
   process.exit(1);
 }
 
