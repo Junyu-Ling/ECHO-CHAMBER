@@ -1,10 +1,22 @@
 import { useState, useRef, useEffect } from "react";
-import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2 } from "lucide-react";
+import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2, Reply } from "lucide-react";
 import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { supabase } from "../supabaseClient";
 import { VOTE_NOTE, VOTE_REQUESTER, VOTE_ADD_TITLE, VOTE_CANCEL_TITLE } from "../copy/voteCopy";
+import {
+  REPLY_BTN,
+  REPLY_CANCEL,
+  REPLY_DEFAULT_NAME,
+  REPLY_DELETE_CONFIRM,
+  REPLY_DELETE_TITLE,
+  REPLY_EMPTY_ALERT,
+  REPLY_NAME_PLACEHOLDER,
+  REPLY_PLACEHOLDER,
+  REPLY_SUBMIT,
+  REPLY_TIME_NOW,
+} from "../copy/replyCopy";
 
 const serverUrl = `https://${projectId}.supabase.co/functions/v1/make-server-2914ec93`;
 
@@ -30,6 +42,14 @@ const getClientId = () => {
   return id;
 };
 
+interface Reply {
+  replyId: string;
+  note: string;
+  requester: string;
+  time: string;
+  ownerId: string;
+}
+
 interface Comment {
   commentId: string;
   note: string;
@@ -37,6 +57,7 @@ interface Comment {
   time: string;
   ownerId: string;
   isVote?: boolean;
+  replies?: Reply[];
 }
 
 function isVoteComment(c: Comment) {
@@ -82,6 +103,8 @@ export function SongRequestSection() {
   const [submitted, setSubmitted] = useState(false);
   const [localVotedIds, setLocalVotedIds] = useState<Set<number>>(new Set());
   const [votingIds, setVotingIds] = useState<Set<number>>(new Set());
+  const [replyingKey, setReplyingKey] = useState<string | null>(null);
+  const [submittingReplyKey, setSubmittingReplyKey] = useState<string | null>(null);
 
   // 初始化从localStorage读取已投票记录
   useEffect(() => {
@@ -240,6 +263,102 @@ export function SongRequestSection() {
     }
   };
 
+  const applyReplyUpdate = (trackId: number, commentId: string, updater: (replies: Reply[]) => Reply[]) => {
+    setRequests((prev) =>
+      prev.map((r) => {
+        if (r.id !== trackId) return r;
+        return {
+          ...r,
+          comments: r.comments.map((c) =>
+            c.commentId === commentId
+              ? { ...c, replies: updater(c.replies || []) }
+              : c
+          ),
+        };
+      })
+    );
+  };
+
+  const handleAddReply = async (
+    trackId: number,
+    commentId: string,
+    note: string,
+    requester: string
+  ) => {
+    const trimmed = note.trim();
+    if (!trimmed) {
+      alert(REPLY_EMPTY_ALERT);
+      return;
+    }
+
+    const replyKey = `${trackId}:${commentId}`;
+    if (submittingReplyKey === replyKey) return;
+
+    const newReply: Reply = {
+      replyId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      note: trimmed,
+      requester: requester.trim() || REPLY_DEFAULT_NAME,
+      time: REPLY_TIME_NOW,
+      ownerId: clientId,
+    };
+
+    setSubmittingReplyKey(replyKey);
+    applyReplyUpdate(trackId, commentId, (replies) => [...replies, newReply]);
+    setReplyingKey(null);
+
+    try {
+      const res = await fetch(
+        `${serverUrl}/requests/${trackId}/comments/${commentId}/replies`,
+        {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ reply: newReply }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "reply failed");
+      }
+      if (data.data) {
+        setRequests((prev) => prev.map((r) => (r.id === trackId ? data.data : r)));
+      }
+    } catch (err) {
+      console.error("Error adding reply:", err);
+      await refetchRequests();
+    } finally {
+      setSubmittingReplyKey(null);
+    }
+  };
+
+  const handleDeleteReply = async (trackId: number, commentId: string, replyId: string) => {
+    if (!window.confirm(REPLY_DELETE_CONFIRM)) return;
+
+    applyReplyUpdate(trackId, commentId, (replies) =>
+      replies.filter((r) => r.replyId !== replyId)
+    );
+
+    try {
+      const res = await fetch(
+        `${serverUrl}/requests/${trackId}/comments/${commentId}/replies/${replyId}`,
+        {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ ownerId: clientId }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "delete reply failed");
+      }
+      if (data.data) {
+        setRequests((prev) => prev.map((r) => (r.id === trackId ? data.data : r)));
+      }
+    } catch (err) {
+      console.error("Error deleting reply:", err);
+      await refetchRequests();
+    }
+  };
+
   const handleSelect = (track: TrackResult) => {
     setSelectedTrack(track);
     setSearchValue(`${track.trackName} — ${track.artistName}`);
@@ -273,6 +392,7 @@ export function SongRequestSection() {
         time: "\u521a\u521a",
         ownerId: clientId,
         isVote: true,
+        replies: [],
       };
 
       setRequests((prev) =>
@@ -336,6 +456,7 @@ export function SongRequestSection() {
       requester: nameInput.trim() || VOTE_REQUESTER,
       time: "刚刚",
       ownerId: clientId,
+      replies: [],
     };
 
     const commentsToSubmit = [newComment];
@@ -579,6 +700,18 @@ export function SongRequestSection() {
                     onVote={() => handleVote(req.id)}
                     voteBusy={votingIds.has(req.id)}
                     onDeleteComment={(commentId) => handleDeleteComment(req.id, commentId)}
+                    onAddReply={(commentId, note, requester) =>
+                      handleAddReply(req.id, commentId, note, requester)
+                    }
+                    onDeleteReply={(commentId, replyId) =>
+                      handleDeleteReply(req.id, commentId, replyId)
+                    }
+                    replyingKey={replyingKey}
+                    onToggleReply={(commentId) => {
+                      const key = `${req.id}:${commentId}`;
+                      setReplyingKey((prev) => (prev === key ? null : key));
+                    }}
+                    submittingReplyKey={submittingReplyKey}
                     clientId={clientId}
                   />
                 ))
@@ -669,6 +802,11 @@ function RequestCard({
   maxVotes,
   onVote,
   onDeleteComment,
+  onAddReply,
+  onDeleteReply,
+  replyingKey,
+  onToggleReply,
+  submittingReplyKey,
   clientId,
   voteBusy,
 }: {
@@ -677,6 +815,11 @@ function RequestCard({
   maxVotes: number;
   onVote: () => void;
   onDeleteComment: (commentId: string) => void;
+  onAddReply: (commentId: string, note: string, requester: string) => void;
+  onDeleteReply: (commentId: string, replyId: string) => void;
+  replyingKey: string | null;
+  onToggleReply: (commentId: string) => void;
+  submittingReplyKey: string | null;
   clientId: string;
   voteBusy?: boolean;
 }) {
@@ -781,35 +924,168 @@ function RequestCard({
       {request.comments && request.comments.length > 0 && (
         <div className="relative px-4 pb-4 pt-1 ml-[4.5rem] lg:ml-12 z-10 flex flex-col gap-2">
           {request.comments.map((cmt) => (
-            <div key={cmt.commentId} className="flex flex-col gap-0.5" style={{ 
-              background: "rgba(0,0,0,0.2)", 
-              padding: "8px 12px", 
-              borderRadius: "4px",
-              borderLeft: "2px solid rgba(255,159,212,0.2)"
-            }}>
+            <CommentItem
+              key={cmt.commentId}
+              comment={cmt}
+              clientId={clientId}
+              onDeleteComment={() => onDeleteComment(cmt.commentId)}
+              onAddReply={(note, requester) => onAddReply(cmt.commentId, note, requester)}
+              onDeleteReply={(replyId) => onDeleteReply(cmt.commentId, replyId)}
+              isReplying={replyingKey === `${request.id}:${cmt.commentId}`}
+              onToggleReply={() => onToggleReply(cmt.commentId)}
+              replyBusy={submittingReplyKey === `${request.id}:${cmt.commentId}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CommentItem({
+  comment,
+  clientId,
+  onDeleteComment,
+  onAddReply,
+  onDeleteReply,
+  isReplying,
+  onToggleReply,
+  replyBusy,
+}: {
+  comment: Comment;
+  clientId: string;
+  onDeleteComment: () => void;
+  onAddReply: (note: string, requester: string) => void;
+  onDeleteReply: (replyId: string) => void;
+  isReplying: boolean;
+  onToggleReply: () => void;
+  replyBusy: boolean;
+}) {
+  const [replyText, setReplyText] = useState("");
+  const [replyName, setReplyName] = useState("");
+  const replies = comment.replies || [];
+
+  const submitReply = (e: React.FormEvent) => {
+    e.preventDefault();
+    onAddReply(replyText, replyName);
+    setReplyText("");
+    setReplyName("");
+  };
+
+  return (
+    <div
+      className="flex flex-col gap-1"
+      style={{
+        background: "rgba(0,0,0,0.2)",
+        padding: "8px 12px",
+        borderRadius: "4px",
+        borderLeft: "2px solid rgba(255,159,212,0.2)",
+      }}
+    >
+      <div className="flex justify-between items-start gap-2">
+        <span className="text-foreground text-xs font-medium opacity-90">{comment.requester}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground text-[10px] opacity-50">{comment.time}</span>
+          {comment.ownerId === clientId && (
+            <button
+              type="button"
+              onClick={onDeleteComment}
+              className="text-red-400/70 hover:text-red-400 flex items-center transition-colors"
+              title="删除我的留言"
+            >
+              <Trash2 size={10} />
+            </button>
+          )}
+        </div>
+      </div>
+      {comment.note && (
+        <p className="text-muted-foreground text-xs mt-1 leading-relaxed opacity-80 break-words">
+          {comment.note}
+        </p>
+      )}
+
+      {replies.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1.5 pl-2 border-l border-white/5">
+          {replies.map((reply) => (
+            <div key={reply.replyId} className="flex flex-col gap-0.5">
               <div className="flex justify-between items-start gap-2">
-                <span className="text-foreground text-xs font-medium opacity-90">{cmt.requester}</span>
+                <span className="text-foreground text-[11px] font-medium opacity-80">
+                  {reply.requester}
+                </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground text-[10px] opacity-50">{cmt.time}</span>
-                  {cmt.ownerId === clientId && (
+                  <span className="text-muted-foreground text-[10px] opacity-40">{reply.time}</span>
+                  {reply.ownerId === clientId && (
                     <button
-                      onClick={() => onDeleteComment(cmt.commentId)}
-                      className="text-red-400/70 hover:text-red-400 flex items-center transition-colors"
-                      title="删除我的留言"
+                      type="button"
+                      onClick={() => onDeleteReply(reply.replyId)}
+                      className="text-red-400/60 hover:text-red-400 flex items-center transition-colors"
+                      title={REPLY_DELETE_TITLE}
                     >
-                      <Trash2 size={10} />
+                      <Trash2 size={9} />
                     </button>
                   )}
                 </div>
               </div>
-              {cmt.note && (
-                <p className="text-muted-foreground text-xs mt-1 leading-relaxed opacity-80 break-words">
-                  {cmt.note}
-                </p>
-              )}
+              <p className="text-muted-foreground text-[11px] leading-relaxed opacity-75 break-words">
+                {reply.note}
+              </p>
             </div>
           ))}
         </div>
+      )}
+
+      <div className="mt-1.5">
+        <button
+          type="button"
+          onClick={onToggleReply}
+          className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider transition-colors hover:opacity-100 opacity-60"
+          style={{ color: "#FF9FD4" }}
+        >
+          <Reply size={10} />
+          {REPLY_BTN}
+          {replies.length > 0 && (
+            <span className="opacity-70">({replies.length})</span>
+          )}
+        </button>
+      </div>
+
+      {isReplying && (
+        <form onSubmit={submitReply} className="mt-2 flex flex-col gap-2">
+          <input
+            type="text"
+            value={replyName}
+            onChange={(e) => setReplyName(e.target.value)}
+            placeholder={REPLY_NAME_PLACEHOLDER}
+            maxLength={20}
+            className="w-full bg-black/30 border border-white/10 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-[#FF9FD4]/40"
+          />
+          <textarea
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            placeholder={REPLY_PLACEHOLDER}
+            maxLength={500}
+            rows={2}
+            className="w-full bg-black/30 border border-white/10 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-[#FF9FD4]/40 resize-none"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={replyBusy || !replyText.trim()}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase tracking-wider transition-opacity disabled:opacity-40"
+              style={{ background: "#FF9FD4", color: "#07070C" }}
+            >
+              {replyBusy ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />}
+              {REPLY_SUBMIT}
+            </button>
+            <button
+              type="button"
+              onClick={onToggleReply}
+              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {REPLY_CANCEL}
+            </button>
+          </div>
+        </form>
       )}
     </div>
   );

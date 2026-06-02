@@ -23,6 +23,38 @@ app.use(
 // Health check
 app.get("/make-server-2914ec93/health", (c) => c.json({ status: "ok" }));
 
+function normalizeComment(cmt: any) {
+  return {
+    ...cmt,
+    replies: Array.isArray(cmt.replies) ? cmt.replies : [],
+  };
+}
+
+function normalizeRequest(req: any) {
+  if (!req) return req;
+  if (req.comments !== undefined) {
+    return {
+      ...req,
+      comments: (req.comments || []).map(normalizeComment),
+    };
+  }
+  return {
+    ...req,
+    comments: req.note || req.requester
+      ? [
+          normalizeComment({
+            commentId: req.id?.toString() || Date.now().toString(),
+            note: req.note || "",
+            requester: req.requester || "匿名",
+            time: req.time || "刚刚",
+            ownerId: req.ownerId || "",
+          }),
+        ]
+      : [],
+    createdAt: req.createdAt || req.id || Date.now(),
+  };
+}
+
 // Get all requests
 app.get("/make-server-2914ec93/requests", async (c) => {
   try {
@@ -32,21 +64,8 @@ app.get("/make-server-2914ec93/requests", async (c) => {
     }
 
     const migrated = rawData
-      .filter(item => item !== null)
-      .map((req: any) => {
-        if (req.comments !== undefined) return req;
-        return {
-          ...req,
-          comments: req.note || req.requester ? [{
-            commentId: req.id?.toString() || Date.now().toString(),
-            note: req.note || "",
-            requester: req.requester || "匿名",
-            time: req.time || "刚刚",
-            ownerId: req.ownerId || ""
-          }] : [],
-          createdAt: req.createdAt || req.id || Date.now()
-        };
-      })
+      .filter((item) => item !== null)
+      .map((req: any) => normalizeRequest(req))
       .filter((req: any) => req.comments && req.comments.length > 0);
 
     return c.json({ success: true, data: migrated });
@@ -87,11 +106,12 @@ app.post("/make-server-2914ec93/requests", async (c) => {
         }
         existing.comments = [...body.comments, ...existing.comments];
       }
+      existing.comments = existing.comments.map(normalizeComment);
       existing.votes = existing.comments.length;
       await kv.set(key, existing);
-      return c.json({ success: true, data: existing });
+      return c.json({ success: true, data: normalizeRequest(existing) });
     } else {
-      const reqData = { ...body };
+      const reqData = normalizeRequest({ ...body });
       if (!reqData.comments) reqData.comments = [];
       reqData.createdAt = Date.now();
       reqData.votes = reqData.comments.length;
@@ -128,11 +148,94 @@ app.delete("/make-server-2914ec93/requests/:id/comments/:commentId", async (c) =
         return c.json({ success: true, deleted: true });
       }
       await kv.set(key, reqData);
-      return c.json({ success: true, data: reqData });
+      return c.json({ success: true, data: normalizeRequest(reqData) });
     }
     return c.json({ success: false, error: "No comments" }, 404);
   } catch (error: any) {
     console.error("Error deleting comment:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// Add a reply under a comment
+app.post("/make-server-2914ec93/requests/:id/comments/:commentId/replies", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const commentId = c.req.param("commentId");
+    const body = await c.req.json();
+    const reply = body.reply;
+    if (!reply?.ownerId) {
+      return c.json({ success: false, error: "Missing ownerId" }, 400);
+    }
+    const note = (reply.note || "").trim();
+    if (!note) {
+      return c.json({ success: false, error: "回复内容不能为空" }, 400);
+    }
+    if (note.length > 500) {
+      return c.json({ success: false, error: "回复过长" }, 400);
+    }
+
+    const key = `req:${id}`;
+    const reqData = await kv.get(key);
+    if (!reqData?.comments) {
+      return c.json({ success: false, error: "Not found" }, 404);
+    }
+
+    const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+    if (idx < 0) {
+      return c.json({ success: false, error: "Comment not found" }, 404);
+    }
+
+    const comment = normalizeComment(reqData.comments[idx]);
+    comment.replies = [...(comment.replies || []), {
+      replyId: reply.replyId || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      note,
+      requester: (reply.requester || "匿名").trim() || "匿名",
+      time: reply.time || "刚刚",
+      ownerId: reply.ownerId,
+    }];
+    reqData.comments[idx] = comment;
+    await kv.set(key, reqData);
+    return c.json({ success: true, data: normalizeRequest(reqData) });
+  } catch (error: any) {
+    console.error("Error adding reply:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// Delete own reply
+app.delete("/make-server-2914ec93/requests/:id/comments/:commentId/replies/:replyId", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const commentId = c.req.param("commentId");
+    const replyId = c.req.param("replyId");
+    const body = await c.req.json();
+    const ownerId = body.ownerId;
+    const key = `req:${id}`;
+
+    const reqData = await kv.get(key);
+    if (!reqData?.comments) {
+      return c.json({ success: false, error: "Not found" }, 404);
+    }
+
+    const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+    if (idx < 0) {
+      return c.json({ success: false, error: "Comment not found" }, 404);
+    }
+
+    const comment = normalizeComment(reqData.comments[idx]);
+    const before = (comment.replies || []).length;
+    comment.replies = (comment.replies || []).filter(
+      (r: any) => !(r.replyId === replyId && r.ownerId === ownerId),
+    );
+    if (comment.replies.length === before) {
+      return c.json({ success: false, error: "Unauthorized or reply not found" }, 403);
+    }
+    reqData.comments[idx] = comment;
+    await kv.set(key, reqData);
+    return c.json({ success: true, data: normalizeRequest(reqData) });
+  } catch (error: any) {
+    console.error("Error deleting reply:", error);
     return c.json({ success: false, error: error.message }, 500);
   }
 });
