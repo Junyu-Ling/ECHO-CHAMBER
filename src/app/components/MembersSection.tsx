@@ -6,6 +6,7 @@ import alexanderPhoto from "../../imports/ad81c106b9718346d60bf647dce4c108.jpg";
 import mikePhoto from "../../imports/bcc1145200430316445221f235a19070.jpg";
 import richardPhoto from "../../assets/members/richard.webp";
 import shenXinyuPhoto from "../../assets/members/shen-xinyu.webp";
+import ellisPhoto from "../../assets/members/ellis.webp";
 import { ImageWithFallback } from "./ImageWithFallback";
 
 const members = [
@@ -61,8 +62,8 @@ const members = [
     nameEn: "ELLIS",
     role: "主唱",
     roleEn: "中国部 G11C2",
-    bio: "用歌声勾勒出音乐的灵魂，为乐曲注入无尽的氛围与色彩",
-    photo: "https://images.unsplash.com/photo-1657830582172-b1eb2880f497?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMHlvdW5nJTIwZmVtYWxlJTIwa2V5Ym9hcmRpc3R8ZW58MXx8fHwxNzgwMzEzODA1fDA&ixlib=rb-4.1.0&q=80&w=1080",
+    bio: "吾即红魔族首屈一指的天才魔法师，驱动上级魔法爆裂魔法。目标是打败魔王，成为魔王！",
+    photo: ellisPhoto,
   },
   {
     id: 6,

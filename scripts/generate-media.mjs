@@ -86,6 +86,7 @@ for (const [id, videoPath] of videoPosterSources) {
 const memberSources = [
   ["shen-xinyu.png", "shen-xinyu.webp"],
   ["richard.png", "richard.webp"],
+  ["ellis.png", "ellis.webp"],
 ];
 
 for (const [input, output] of memberSources) {
