@@ -70,7 +70,7 @@ const members = [
     nameEn: "RICHARD",
     role: "鼓手 / 键盘手",
     roleEn: "中国部 G11C1",
-    bio: "音色架构师，通过电子节拍与旋律，拉满现场的潮流暗黑质感",
+    bio: "随心所欲 基本能尝试所有音乐形式的鼓手+只会看五线谱的键盘手 LOL",
     photo: richardPhoto,
   },
   {
