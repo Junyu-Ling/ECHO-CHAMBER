@@ -1,6 +1,7 @@
 import { X, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { resolveVideoPlayUrl } from "../lib/resolveVideoUrl";
 
 interface Video {
   id: number;
@@ -19,6 +20,7 @@ interface VideoModalProps {
 
 export function VideoModal({ video, onClose }: VideoModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -36,10 +38,27 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
   }, [onClose]);
 
   useEffect(() => {
+    let cancelled = false;
     setPlaying(false);
     setLoading(true);
     setError(false);
-  }, [video.id, video.videoUrl]);
+    setPlayUrl(null);
+
+    resolveVideoPlayUrl(video.id)
+      .then((url) => {
+        if (!cancelled) setPlayUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoading(false);
+          setError(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [video.id]);
 
   const tryAutoplay = async () => {
     const el = videoRef.current;
@@ -59,6 +78,18 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
         setLoading(false);
       }
     }
+  };
+
+  const retry = () => {
+    setError(false);
+    setLoading(true);
+    setPlayUrl(null);
+    resolveVideoPlayUrl(video.id)
+      .then((url) => setPlayUrl(url))
+      .catch(() => {
+        setLoading(false);
+        setError(true);
+      });
   };
 
   const modal = (
@@ -99,44 +130,41 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
           {error ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10 px-6 text-center">
               <p className="text-muted-foreground text-sm">视频加载失败</p>
+              <p className="text-muted-foreground/60 text-xs">
+                私有仓库需在 Vercel 配置 GITHUB_TOKEN
+              </p>
               <button
                 type="button"
                 className="text-xs px-3 py-1 rounded"
                 style={{ background: "#FF9FD4", color: "#07070C" }}
-                onClick={() => {
-                  setError(false);
-                  setLoading(true);
-                  const el = videoRef.current;
-                  if (el) {
-                    el.load();
-                    el.addEventListener("canplay", () => tryAutoplay(), { once: true });
-                  }
-                }}
+                onClick={retry}
               >
                 重试
               </button>
             </div>
           ) : (
-            <video
-              ref={videoRef}
-              key={video.videoUrl}
-              src={video.videoUrl}
-              poster={video.poster}
-              controls
-              autoPlay
-              playsInline
-              className="relative z-[1] w-full h-full object-cover"
-              preload="auto"
-              onCanPlay={tryAutoplay}
-              onPlaying={() => {
-                setPlaying(true);
-                setLoading(false);
-              }}
-              onError={() => {
-                setLoading(false);
-                setError(true);
-              }}
-            />
+            playUrl && (
+              <video
+                ref={videoRef}
+                key={playUrl}
+                src={playUrl}
+                poster={video.poster}
+                controls
+                autoPlay
+                playsInline
+                className="relative z-[1] w-full h-full object-cover"
+                preload="auto"
+                onCanPlay={tryAutoplay}
+                onPlaying={() => {
+                  setPlaying(true);
+                  setLoading(false);
+                }}
+                onError={() => {
+                  setLoading(false);
+                  setError(true);
+                }}
+              />
+            )
           )}
         </div>
 
