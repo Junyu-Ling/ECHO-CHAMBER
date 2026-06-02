@@ -71,6 +71,55 @@ function normalizeRequest(req: any) {
   };
 }
 
+async function toggleCommentLikeInStore(
+  trackId: string | number,
+  commentId: string,
+  ownerId: string,
+) {
+  const key = `req:${trackId}`;
+  const reqData = await kv.get(key);
+  if (!reqData?.comments) {
+    throw new Error("Not found");
+  }
+  const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+  if (idx < 0) {
+    throw new Error("Comment not found");
+  }
+  const comment = normalizeComment(reqData.comments[idx]);
+  comment.likedBy = toggleLikedBy(comment.likedBy, ownerId);
+  reqData.comments[idx] = comment;
+  await kv.set(key, reqData);
+  return normalizeRequest(reqData);
+}
+
+async function toggleReplyLikeInStore(
+  trackId: string | number,
+  commentId: string,
+  replyId: string,
+  ownerId: string,
+) {
+  const key = `req:${trackId}`;
+  const reqData = await kv.get(key);
+  if (!reqData?.comments) {
+    throw new Error("Not found");
+  }
+  const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+  if (idx < 0) {
+    throw new Error("Comment not found");
+  }
+  const comment = normalizeComment(reqData.comments[idx]);
+  const rIdx = (comment.replies || []).findIndex((r: any) => r.replyId === replyId);
+  if (rIdx < 0) {
+    throw new Error("Reply not found");
+  }
+  const reply = normalizeReply(comment.replies[rIdx]);
+  reply.likedBy = toggleLikedBy(reply.likedBy, ownerId);
+  comment.replies[rIdx] = reply;
+  reqData.comments[idx] = comment;
+  await kv.set(key, reqData);
+  return normalizeRequest(reqData);
+}
+
 // Get all requests
 app.get("/make-server-2914ec93/requests", async (c) => {
   try {
@@ -95,6 +144,40 @@ app.get("/make-server-2914ec93/requests", async (c) => {
 app.post("/make-server-2914ec93/requests", async (c) => {
   try {
     const body = await c.req.json();
+
+    if (body.action === "toggleCommentLike") {
+      if (!body.id || !body.commentId || !body.ownerId) {
+        return c.json({ success: false, error: "Missing fields" }, 400);
+      }
+      try {
+        const data = await toggleCommentLikeInStore(body.id, body.commentId, body.ownerId);
+        return c.json({ success: true, data });
+      } catch (error: any) {
+        console.error("Error toggling comment like (action):", error);
+        const status = error.message?.includes("not found") ? 404 : 500;
+        return c.json({ success: false, error: error.message }, status);
+      }
+    }
+
+    if (body.action === "toggleReplyLike") {
+      if (!body.id || !body.commentId || !body.replyId || !body.ownerId) {
+        return c.json({ success: false, error: "Missing fields" }, 400);
+      }
+      try {
+        const data = await toggleReplyLikeInStore(
+          body.id,
+          body.commentId,
+          body.replyId,
+          body.ownerId,
+        );
+        return c.json({ success: true, data });
+      } catch (error: any) {
+        console.error("Error toggling reply like (action):", error);
+        const status = error.message?.includes("not found") ? 404 : 500;
+        return c.json({ success: false, error: error.message }, status);
+      }
+    }
+
     const id = body.id;
     if (!id) return c.json({ success: false, error: "Missing track ID" }, 400);
 
@@ -267,26 +350,12 @@ app.post("/make-server-2914ec93/requests/:id/comments/:commentId/like", async (c
     if (!ownerId) {
       return c.json({ success: false, error: "Missing ownerId" }, 400);
     }
-
-    const key = `req:${id}`;
-    const reqData = await kv.get(key);
-    if (!reqData?.comments) {
-      return c.json({ success: false, error: "Not found" }, 404);
-    }
-
-    const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
-    if (idx < 0) {
-      return c.json({ success: false, error: "Comment not found" }, 404);
-    }
-
-    const comment = normalizeComment(reqData.comments[idx]);
-    comment.likedBy = toggleLikedBy(comment.likedBy, ownerId);
-    reqData.comments[idx] = comment;
-    await kv.set(key, reqData);
-    return c.json({ success: true, data: normalizeRequest(reqData) });
+    const data = await toggleCommentLikeInStore(id, commentId, ownerId);
+    return c.json({ success: true, data });
   } catch (error: any) {
     console.error("Error toggling comment like:", error);
-    return c.json({ success: false, error: error.message }, 500);
+    const status = error.message === "Not found" || error.message === "Comment not found" ? 404 : 500;
+    return c.json({ success: false, error: error.message }, status);
   }
 });
 
@@ -301,33 +370,12 @@ app.post("/make-server-2914ec93/requests/:id/comments/:commentId/replies/:replyI
     if (!ownerId) {
       return c.json({ success: false, error: "Missing ownerId" }, 400);
     }
-
-    const key = `req:${id}`;
-    const reqData = await kv.get(key);
-    if (!reqData?.comments) {
-      return c.json({ success: false, error: "Not found" }, 404);
-    }
-
-    const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
-    if (idx < 0) {
-      return c.json({ success: false, error: "Comment not found" }, 404);
-    }
-
-    const comment = normalizeComment(reqData.comments[idx]);
-    const rIdx = (comment.replies || []).findIndex((r: any) => r.replyId === replyId);
-    if (rIdx < 0) {
-      return c.json({ success: false, error: "Reply not found" }, 404);
-    }
-
-    const reply = normalizeReply(comment.replies[rIdx]);
-    reply.likedBy = toggleLikedBy(reply.likedBy, ownerId);
-    comment.replies[rIdx] = reply;
-    reqData.comments[idx] = comment;
-    await kv.set(key, reqData);
-    return c.json({ success: true, data: normalizeRequest(reqData) });
+    const data = await toggleReplyLikeInStore(id, commentId, replyId, ownerId);
+    return c.json({ success: true, data });
   } catch (error: any) {
     console.error("Error toggling reply like:", error);
-    return c.json({ success: false, error: error.message }, 500);
+    const status = error.message.includes("not found") ? 404 : 500;
+    return c.json({ success: false, error: error.message }, status);
   }
 });
 

@@ -75,6 +75,24 @@ function isLikedBy(likedBy: string[] | undefined, ownerId: string) {
   return (likedBy || []).includes(ownerId);
 }
 
+function normalizeRequestClient(req: SongRequest): SongRequest {
+  return {
+    ...req,
+    comments: (req.comments || []).map((c) => ({
+      ...c,
+      likedBy: Array.isArray(c.likedBy) ? c.likedBy : [],
+      replies: (c.replies || []).map((r) => ({
+        ...r,
+        likedBy: Array.isArray(r.likedBy) ? r.likedBy : [],
+      })),
+    })),
+  };
+}
+
+function normalizeRequestsList(list: SongRequest[]) {
+  return list.map(normalizeRequestClient);
+}
+
 function isVoteComment(c: Comment) {
   return (
     c.isVote === true ||
@@ -154,7 +172,7 @@ export function SongRequestSection() {
         })
         .then((data) => {
           if (data.success) {
-            setRequests(data.data);
+            setRequests(normalizeRequestsList(data.data));
           } else {
             console.error("Server returned error fetching requests:", data.error);
           }
@@ -200,12 +218,13 @@ export function SongRequestSection() {
             }
 
             if (newReq) {
+              const normalized = normalizeRequestClient(newReq as SongRequest);
               setRequests((prev) => {
-                const exists = prev.find((r) => r.id === newReq.id);
+                const exists = prev.find((r) => r.id === normalized.id);
                 if (exists) {
-                  return prev.map((r) => (r.id === newReq.id ? newReq : r));
+                  return prev.map((r) => (r.id === normalized.id ? normalized : r));
                 }
-                return [newReq, ...prev];
+                return [normalized, ...prev];
               });
             }
           } else if (payload.eventType === "DELETE") {
@@ -235,10 +254,28 @@ export function SongRequestSection() {
     try {
       const res = await fetch(`${serverUrl}/requests`, { headers: getAuthHeaders() });
       const data = await res.json();
-      if (data.success) setRequests(data.data);
+      if (data.success) setRequests(normalizeRequestsList(data.data));
     } catch {
       /* ignore */
     }
+  };
+
+  const postLikeAction = async (payload: {
+    action: "toggleCommentLike" | "toggleReplyLike";
+    id: number;
+    commentId: string;
+    replyId?: string;
+  }) => {
+    const res = await fetch(`${serverUrl}/requests`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ ...payload, ownerId: clientId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "like failed");
+    }
+    return data.data as SongRequest;
   };
 
   const applyCommentRemoval = (trackId: number, commentId: string) => {
@@ -348,13 +385,15 @@ export function SongRequestSection() {
   };
 
   const mergeTrackFromServer = (trackId: number, data: SongRequest) => {
-    setRequests((prev) => prev.map((r) => (r.id === trackId ? data : r)));
+    const normalized = normalizeRequestClient(data);
+    setRequests((prev) => prev.map((r) => (r.id === trackId ? normalized : r)));
   };
 
   const handleToggleCommentLike = async (trackId: number, commentId: string) => {
     const likeKey = `c:${trackId}:${commentId}`;
     if (likingKeys.has(likeKey)) return;
 
+    const snapshot = requests;
     setLikingKeys((prev) => new Set(prev).add(likeKey));
     setRequests((prev) =>
       prev.map((r) => {
@@ -371,19 +410,15 @@ export function SongRequestSection() {
     );
 
     try {
-      const res = await fetch(
-        `${serverUrl}/requests/${trackId}/comments/${commentId}/like`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ ownerId: clientId }),
-        }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) throw new Error(data.error || "like failed");
-      if (data.data) mergeTrackFromServer(trackId, data.data);
+      const data = await postLikeAction({
+        action: "toggleCommentLike",
+        id: trackId,
+        commentId,
+      });
+      mergeTrackFromServer(trackId, data);
     } catch (err) {
       console.error("Error toggling comment like:", err);
+      setRequests(snapshot);
       await refetchRequests();
     } finally {
       setLikingKeys((prev) => {
@@ -402,6 +437,7 @@ export function SongRequestSection() {
     const likeKey = `r:${trackId}:${commentId}:${replyId}`;
     if (likingKeys.has(likeKey)) return;
 
+    const snapshot = requests;
     setLikingKeys((prev) => new Set(prev).add(likeKey));
     setRequests((prev) =>
       prev.map((r) => {
@@ -424,19 +460,16 @@ export function SongRequestSection() {
     );
 
     try {
-      const res = await fetch(
-        `${serverUrl}/requests/${trackId}/comments/${commentId}/replies/${replyId}/like`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ ownerId: clientId }),
-        }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) throw new Error(data.error || "like failed");
-      if (data.data) mergeTrackFromServer(trackId, data.data);
+      const data = await postLikeAction({
+        action: "toggleReplyLike",
+        id: trackId,
+        commentId,
+        replyId,
+      });
+      mergeTrackFromServer(trackId, data);
     } catch (err) {
       console.error("Error toggling reply like:", err);
+      setRequests(snapshot);
       await refetchRequests();
     } finally {
       setLikingKeys((prev) => {
@@ -1133,34 +1166,38 @@ function CommentItem({
         borderLeft: "2px solid rgba(255,159,212,0.2)",
       }}
     >
-      <div className="flex justify-between items-start gap-2">
+      <div className="flex items-center gap-1.5 mb-1">
         <span className="text-foreground text-xs font-medium opacity-90">{comment.requester}</span>
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-[10px] opacity-50">{comment.time}</span>
+        <span className="text-muted-foreground text-[10px] opacity-50">{comment.time}</span>
+      </div>
+
+      <div className="flex items-start gap-2">
+        {comment.note ? (
+          <p className="flex-1 min-w-0 text-muted-foreground text-xs leading-relaxed opacity-80 break-words">
+            {comment.note}
+          </p>
+        ) : (
+          <div className="flex-1" />
+        )}
+        <div className="flex flex-shrink-0 items-center gap-1.5">
+          <LikeButton
+            count={commentLikeCount}
+            liked={commentLiked}
+            busy={commentLikeBusy}
+            onToggle={onToggleCommentLike}
+          />
           {comment.ownerId === clientId && (
             <button
               type="button"
               onClick={onDeleteComment}
-              className="text-red-400/70 hover:text-red-400 flex items-center transition-colors"
+              className="text-red-400/70 hover:text-red-400 flex items-center transition-colors p-1"
               title="删除我的留言"
             >
-              <Trash2 size={10} />
+              <Trash2 size={11} />
             </button>
           )}
         </div>
       </div>
-      {comment.note && (
-        <p className="text-muted-foreground text-xs mt-1 leading-relaxed opacity-80 break-words">
-          {comment.note}
-        </p>
-      )}
-
-      <LikeButton
-        count={commentLikeCount}
-        liked={commentLiked}
-        busy={commentLikeBusy}
-        onToggle={onToggleCommentLike}
-      />
 
       {replies.length > 0 && (
         <div className="mt-2 flex flex-col gap-1.5 pl-2 border-l border-white/5">
@@ -1169,17 +1206,29 @@ function CommentItem({
             const replyLikeCount = (reply.likedBy || []).length;
             return (
               <div key={reply.replyId} className="flex flex-col gap-0.5">
-                <div className="flex justify-between items-start gap-2">
+                <div className="flex items-center gap-1.5">
                   <span className="text-foreground text-[11px] font-medium opacity-80">
                     {reply.requester}
                   </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-[10px] opacity-40">{reply.time}</span>
+                  <span className="text-muted-foreground text-[10px] opacity-40">{reply.time}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <p className="flex-1 min-w-0 text-muted-foreground text-[11px] leading-relaxed opacity-75 break-words">
+                    {reply.note}
+                  </p>
+                  <div className="flex flex-shrink-0 items-center gap-1">
+                    <LikeButton
+                      count={replyLikeCount}
+                      liked={replyLiked}
+                      busy={replyLikeBusy(reply.replyId)}
+                      onToggle={() => onToggleReplyLike(reply.replyId)}
+                      compact
+                    />
                     {reply.ownerId === clientId && (
                       <button
                         type="button"
                         onClick={() => onDeleteReply(reply.replyId)}
-                        className="text-red-400/60 hover:text-red-400 flex items-center transition-colors"
+                        className="text-red-400/60 hover:text-red-400 flex items-center transition-colors p-0.5"
                         title={REPLY_DELETE_TITLE}
                       >
                         <Trash2 size={9} />
@@ -1187,16 +1236,6 @@ function CommentItem({
                     )}
                   </div>
                 </div>
-                <p className="text-muted-foreground text-[11px] leading-relaxed opacity-75 break-words">
-                  {reply.note}
-                </p>
-                <LikeButton
-                  count={replyLikeCount}
-                  liked={replyLiked}
-                  busy={replyLikeBusy(reply.replyId)}
-                  onToggle={() => onToggleReplyLike(reply.replyId)}
-                  compact
-                />
               </div>
             );
           })}
@@ -1273,23 +1312,35 @@ function LikeButton({
   onToggle: () => void;
   compact?: boolean;
 }) {
+  const iconSize = compact ? 11 : 13;
   return (
     <button
       type="button"
       onClick={onToggle}
       disabled={busy}
       title={liked ? UNLIKE_TITLE : LIKE_TITLE}
-      className={`inline-flex items-center gap-1 transition-opacity hover:opacity-100 disabled:opacity-40 ${
-        compact ? "mt-0.5" : "mt-1"
-      } ${liked ? "opacity-90" : "opacity-50"}`}
-      style={{ color: liked ? "#FF9FD4" : "#6B6B8A" }}
+      className="inline-flex flex-col items-center justify-center gap-0.5 transition-all hover:scale-105 disabled:opacity-40 disabled:hover:scale-100"
+      style={{
+        minWidth: compact ? 36 : 42,
+        padding: compact ? "4px 6px" : "6px 8px",
+        borderRadius: 6,
+        border: liked
+          ? "1px solid rgba(255,159,212,0.55)"
+          : "1px solid rgba(255,255,255,0.14)",
+        background: liked ? "rgba(255,159,212,0.14)" : "rgba(255,255,255,0.04)",
+        color: liked ? "#FF9FD4" : "#9A9AB0",
+      }}
     >
       <Heart
-        size={compact ? 9 : 10}
+        size={iconSize}
         fill={liked ? "#FF9FD4" : "transparent"}
         stroke={liked ? "#FF9FD4" : "currentColor"}
+        strokeWidth={liked ? 0 : 2}
       />
-      <span className="tabular-nums text-[10px]">
+      <span
+        className="tabular-nums leading-none font-medium"
+        style={{ fontSize: compact ? "9px" : "10px" }}
+      >
         {count > 0 ? count : LIKE_BTN}
       </span>
     </button>
