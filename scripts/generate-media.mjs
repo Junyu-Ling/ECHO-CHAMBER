@@ -35,40 +35,21 @@ for (const id of [1, 2, 3]) {
     .toFile(path.join(postersDir, `video-${id}.webp`));
 }
 
-async function memberPortrait(inputPath, outputPath, zoom = 1) {
-  const w = 800;
-  const h = 1067;
-  const meta = await sharp(inputPath).metadata();
-  const scale = Math.min((w * zoom) / meta.width, (h * zoom) / meta.height);
-  const resized = await sharp(inputPath)
-    .resize(Math.round(meta.width * scale), Math.round(meta.height * scale))
-    .toBuffer();
-
-  await sharp({
-    create: {
-      width: w,
-      height: h,
-      channels: 3,
-      background: { r: 7, g: 7, b: 12 },
-    },
-  })
-    .composite([{ input: resized, gravity: "centre" }])
-    .webp({ quality: 85 })
-    .toFile(outputPath);
-}
-
 const memberSources = [
-  ["shen-xinyu.png", "shen-xinyu.webp", 0.82],
-  ["richard.png", "richard.webp", 1],
+  ["shen-xinyu.png", "shen-xinyu.webp"],
+  ["richard.png", "richard.webp"],
 ];
 
-for (const [input, output, zoom] of memberSources) {
+for (const [input, output] of memberSources) {
   const inputPath = path.join(memberSourcesDir, input);
   if (!existsSync(inputPath)) {
     console.warn(`Skip ${output}: place source at scripts/member-sources/${input}`);
     continue;
   }
-  await memberPortrait(inputPath, path.join(assetsDir, "members", output), zoom);
+  await sharp(inputPath)
+    .resize(800, 1067, { fit: "cover", position: "centre" })
+    .webp({ quality: 85 })
+    .toFile(path.join(assetsDir, "members", output));
 }
 
 console.log("Generated hero, posters, and member webp assets");
