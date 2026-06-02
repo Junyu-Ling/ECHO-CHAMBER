@@ -164,6 +164,30 @@ export async function deleteComment(trackId, commentId, ownerId) {
   return { success: true, data: normalizeRequest(reqData) };
 }
 
+export async function editComment(trackId, commentId, ownerId, patch) {
+  const note = (patch.note || "").trim();
+  const requester = (patch.requester || "").trim() || "匿名";
+  if (!note) throw Object.assign(new Error("留言内容不能为空"), { status: 400 });
+  if (note.length > 500) throw Object.assign(new Error("留言过长"), { status: 400 });
+
+  const { key, reqData } = await loadTrack(trackId);
+  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  if (idx < 0) throw Object.assign(new Error("Comment not found"), { status: 404 });
+
+  const comment = normalizeComment(reqData.comments[idx]);
+  if (comment.ownerId !== ownerId) {
+    throw Object.assign(new Error("Unauthorized or comment not found"), { status: 403 });
+  }
+  if (comment.isVote === true) {
+    throw Object.assign(new Error("投票记录不能编辑"), { status: 400 });
+  }
+  comment.note = note;
+  comment.requester = requester;
+  reqData.comments[idx] = comment;
+  await kv.kvSet(key, stamp(reqData));
+  return { success: true, data: normalizeRequest(reqData) };
+}
+
 export async function postRequest(body) {
   const knownActions = new Set([
     "toggleCommentLike",
@@ -171,6 +195,7 @@ export async function postRequest(body) {
     "addReply",
     "deleteReply",
     "deleteComment",
+    "editComment",
   ]);
   if (body.action && !knownActions.has(body.action)) {
     return { status: 400, body: { success: false, error: "Unknown action" } };
@@ -217,6 +242,19 @@ export async function postRequest(body) {
     return {
       status: 200,
       body: await deleteComment(body.id, body.commentId, body.ownerId),
+    };
+  }
+
+  if (body.action === "editComment") {
+    if (!body.id || !body.commentId || !body.ownerId) {
+      return { status: 400, body: { success: false, error: "Missing fields" } };
+    }
+    return {
+      status: 200,
+      body: await editComment(body.id, body.commentId, body.ownerId, {
+        note: body.note,
+        requester: body.requester,
+      }),
     };
   }
 

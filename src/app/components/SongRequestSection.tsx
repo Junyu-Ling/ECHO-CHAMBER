@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2, Reply as ReplyIcon, Heart } from "lucide-react";
+import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2, Reply as ReplyIcon, Heart, Pencil } from "lucide-react";
 import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
 import { supabase } from "../supabaseClient";
-import { deleteCommentViaApi, fetchAllRequests, postRequestsBody } from "../lib/requestsApi";
+import { deleteCommentViaApi, editCommentViaApi, fetchAllRequests, postRequestsBody } from "../lib/requestsApi";
 import { normalizeRequest } from "../lib/requestsStore";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
 import { VOTE_NOTE, VOTE_REQUESTER, VOTE_ADD_TITLE, VOTE_CANCEL_TITLE } from "../copy/voteCopy";
@@ -28,6 +28,15 @@ import {
   stampReplyFields,
 } from "../lib/commentTime";
 import { stopPreviewIf, subscribePreview, togglePreview } from "../lib/previewAudio";
+import {
+  COMMENT_EDIT_BTN,
+  COMMENT_EDIT_CANCEL,
+  COMMENT_EDIT_EMPTY_NOTE,
+  COMMENT_EDIT_NAME_PLACEHOLDER,
+  COMMENT_EDIT_NOTE_PLACEHOLDER,
+  COMMENT_EDIT_SAVE,
+  COMMENT_EDIT_TOO_LONG,
+} from "../copy/commentEditCopy";
 
 // requestsApiBase + getAuthHeaders from ../lib/requestsApi
 
@@ -127,6 +136,8 @@ export function SongRequestSection() {
   const [replyingKey, setReplyingKey] = useState<string | null>(null);
   const [submittingReplyKey, setSubmittingReplyKey] = useState<string | null>(null);
   const [likingKeys, setLikingKeys] = useState<Set<string>>(new Set());
+  const [editingCommentKey, setEditingCommentKey] = useState<string | null>(null);
+  const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
 
   const fetchGenerationRef = useRef(0);
   const mutatingCountRef = useRef(0);
@@ -276,6 +287,67 @@ export function SongRequestSection() {
 
   const removeCommentOnServer = async (trackId: number, commentId: string) => {
     await deleteCommentViaApi(trackId, commentId, clientId);
+  };
+
+  const applyCommentTextUpdate = (
+    trackId: number,
+    commentId: string,
+    patch: { note: string; requester: string }
+  ) => {
+    setRequests((prev) =>
+      prev.map((r) => {
+        if (r.id !== trackId) return r;
+        return {
+          ...r,
+          updatedAt: Date.now(),
+          comments: r.comments.map((c) =>
+            c.commentId === commentId ? { ...c, ...patch } : c
+          ),
+        };
+      })
+    );
+  };
+
+  const handleEditComment = async (
+    trackId: number,
+    commentId: string,
+    note: string,
+    requester: string
+  ) => {
+    const trimmed = note.trim();
+    const name = requester.trim() || REPLY_DEFAULT_NAME;
+    if (!trimmed) {
+      alert(COMMENT_EDIT_EMPTY_NOTE);
+      return;
+    }
+    if (trimmed.length > 500) {
+      alert(COMMENT_EDIT_TOO_LONG);
+      return;
+    }
+
+    const saveKey = `${trackId}:${commentId}`;
+    if (savingCommentKey === saveKey) return;
+
+    const snapshot = requests;
+    applyCommentTextUpdate(trackId, commentId, { note: trimmed, requester: name });
+    setEditingCommentKey(null);
+    setSavingCommentKey(saveKey);
+    beginMutation();
+    try {
+      const data = await editCommentViaApi(trackId, commentId, clientId, {
+        note: trimmed,
+        requester: name,
+      });
+      if (data.data) mergeTrackFromServer(trackId, data.data as SongRequest);
+    } catch (err) {
+      console.error("Error editing comment:", err);
+      setRequests(snapshot);
+      const msg = err instanceof Error ? err.message : "";
+      alert(msg || "保存失败，请稍后重试");
+    } finally {
+      setSavingCommentKey(null);
+      endMutation();
+    }
   };
 
   const handleDeleteComment = async (trackId: number, commentId: string) => {
@@ -857,6 +929,15 @@ export function SongRequestSection() {
                     likingKeys={likingKeys}
                     trackId={req.id}
                     clientId={clientId}
+                    editingCommentKey={editingCommentKey}
+                    savingCommentKey={savingCommentKey}
+                    onStartEditComment={(commentId) =>
+                      setEditingCommentKey(`${req.id}:${commentId}`)
+                    }
+                    onCancelEditComment={() => setEditingCommentKey(null)}
+                    onSaveEditComment={(commentId, note, requester) =>
+                      handleEditComment(req.id, commentId, note, requester)
+                    }
                   />
                 ))
               )}
@@ -942,6 +1023,11 @@ function RequestCard({
   likingKeys,
   trackId,
   clientId,
+  editingCommentKey,
+  savingCommentKey,
+  onStartEditComment,
+  onCancelEditComment,
+  onSaveEditComment,
   voteBusy,
 }: {
   request: SongRequest;
@@ -959,6 +1045,11 @@ function RequestCard({
   likingKeys: Set<string>;
   trackId: number;
   clientId: string;
+  editingCommentKey: string | null;
+  savingCommentKey: string | null;
+  onStartEditComment: (commentId: string) => void;
+  onCancelEditComment: () => void;
+  onSaveEditComment: (commentId: string, note: string, requester: string) => void;
   voteBusy?: boolean;
 }) {
   const pct = Math.round((request.votes / maxVotes) * 100);
@@ -1078,6 +1169,13 @@ function RequestCard({
               replyLikeBusy={(replyId) =>
                 likingKeys.has(`r:${trackId}:${cmt.commentId}:${replyId}`)
               }
+              isEditing={editingCommentKey === `${trackId}:${cmt.commentId}`}
+              editBusy={savingCommentKey === `${trackId}:${cmt.commentId}`}
+              onStartEdit={() => onStartEditComment(cmt.commentId)}
+              onCancelEdit={onCancelEditComment}
+              onSaveEdit={(note, requester) =>
+                onSaveEditComment(cmt.commentId, note, requester)
+              }
             />
           ))}
         </div>
@@ -1099,6 +1197,11 @@ function CommentItem({
   onToggleReplyLike,
   commentLikeBusy,
   replyLikeBusy,
+  isEditing,
+  editBusy,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
 }: {
   comment: Comment;
   clientId: string;
@@ -1112,18 +1215,39 @@ function CommentItem({
   onToggleReplyLike: (replyId: string) => void;
   commentLikeBusy: boolean;
   replyLikeBusy: (replyId: string) => boolean;
+  isEditing: boolean;
+  editBusy: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (note: string, requester: string) => void;
 }) {
   const [replyText, setReplyText] = useState("");
   const [replyName, setReplyName] = useState("");
+  const [editName, setEditName] = useState(comment.requester);
+  const [editNote, setEditNote] = useState(comment.note);
   const replies = comment.replies || [];
   const commentLiked = isLikedBy(comment.likedBy, clientId);
   const commentLikeCount = (comment.likedBy || []).length;
+  const isOwn = comment.ownerId === clientId;
+  const canEdit = isOwn && !isVoteComment(comment);
+
+  useEffect(() => {
+    if (isEditing) {
+      setEditName(comment.requester);
+      setEditNote(comment.note);
+    }
+  }, [isEditing, comment.requester, comment.note]);
 
   const submitReply = (e: React.FormEvent) => {
     e.preventDefault();
     onAddReply(replyText, replyName);
     setReplyText("");
     setReplyName("");
+  };
+
+  const submitEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSaveEdit(editNote, editName);
   };
 
   return (
@@ -1136,6 +1260,45 @@ function CommentItem({
         borderLeft: "2px solid rgba(255,159,212,0.2)",
       }}
     >
+      {isEditing ? (
+        <form onSubmit={submitEdit} className="flex flex-col gap-2">
+          <input
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            placeholder={COMMENT_EDIT_NAME_PLACEHOLDER}
+            maxLength={20}
+            className="w-full px-2 py-1 text-xs bg-black/30 border border-white/10 text-foreground rounded-sm outline-none focus:border-[#FF9FD4]/40"
+          />
+          <textarea
+            value={editNote}
+            onChange={(e) => setEditNote(e.target.value)}
+            placeholder={COMMENT_EDIT_NOTE_PLACEHOLDER}
+            maxLength={500}
+            rows={3}
+            className="w-full px-2 py-1 text-xs bg-black/30 border border-white/10 text-foreground rounded-sm outline-none focus:border-[#FF9FD4]/40 resize-y min-h-[60px]"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={editBusy}
+              className="text-xs px-2 py-1 disabled:opacity-50"
+              style={{ background: "#FF9FD4", color: "#07070C" }}
+            >
+              {editBusy ? "保存中…" : COMMENT_EDIT_SAVE}
+            </button>
+            <button
+              type="button"
+              disabled={editBusy}
+              onClick={onCancelEdit}
+              className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              {COMMENT_EDIT_CANCEL}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
       <div className="flex items-center gap-1.5 mb-1">
         <span className="text-foreground text-xs font-medium opacity-90">{comment.requester}</span>
         <time
@@ -1165,7 +1328,17 @@ function CommentItem({
             busy={commentLikeBusy}
             onToggle={onToggleCommentLike}
           />
-          {comment.ownerId === clientId && (
+          {canEdit && (
+            <button
+              type="button"
+              onClick={onStartEdit}
+              className="text-muted-foreground/70 hover:text-[#FF9FD4] flex items-center transition-colors p-1"
+              title={COMMENT_EDIT_BTN}
+            >
+              <Pencil size={11} />
+            </button>
+          )}
+          {isOwn && (
             <button
               type="button"
               onClick={onDeleteComment}
@@ -1282,6 +1455,8 @@ function CommentItem({
             </button>
           </div>
         </form>
+      )}
+        </>
       )}
     </div>
   );

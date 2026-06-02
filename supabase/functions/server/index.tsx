@@ -231,6 +231,38 @@ async function deleteCommentInStore(
   return { data: normalizeRequest(reqData) };
 }
 
+async function editCommentInStore(
+  trackId: string | number,
+  commentId: string,
+  ownerId: string,
+  patch: { note?: string; requester?: string },
+) {
+  const note = (patch.note || "").trim();
+  const requester = (patch.requester || "").trim() || "匿名";
+  if (!note) throw new Error("留言内容不能为空");
+  if (note.length > 500) throw new Error("留言过长");
+
+  const key = `req:${trackId}`;
+  const reqData = await kv.get(key);
+  if (!reqData?.comments) throw new Error("Not found");
+
+  const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+  if (idx < 0) throw new Error("Comment not found");
+
+  const comment = normalizeComment(reqData.comments[idx]);
+  if (comment.ownerId !== ownerId) {
+    throw new Error("Unauthorized or comment not found");
+  }
+  if (comment.isVote === true) {
+    throw new Error("投票记录不能编辑");
+  }
+  comment.note = note;
+  comment.requester = requester;
+  reqData.comments[idx] = comment;
+  await kv.set(key, stampReq(reqData));
+  return normalizeRequest(reqData);
+}
+
 // Get all requests
 app.get("/make-server-2914ec93/requests", async (c) => {
   try {
@@ -264,6 +296,7 @@ app.post("/make-server-2914ec93/requests", async (c) => {
         "addReply",
         "deleteReply",
         "deleteComment",
+        "editComment",
       ]);
       if (!known.has(action)) {
         return c.json({ success: false, error: "Unknown action" }, 400);
@@ -347,6 +380,25 @@ app.post("/make-server-2914ec93/requests", async (c) => {
       } catch (error: any) {
         console.error("Error deleting comment (action):", error);
         const status = error.message?.includes("not found") ? 404 : 403;
+        return c.json({ success: false, error: error.message }, status);
+      }
+    }
+
+    if (body.action === "editComment") {
+      if (!body.id || !body.commentId || !body.ownerId) {
+        return c.json({ success: false, error: "Missing fields" }, 400);
+      }
+      try {
+        const data = await editCommentInStore(
+          body.id,
+          body.commentId,
+          body.ownerId,
+          { note: body.note, requester: body.requester },
+        );
+        return c.json({ success: true, data });
+      } catch (error: any) {
+        console.error("Error editing comment (action):", error);
+        const status = error.message?.includes("not found") ? 404 : 400;
         return c.json({ success: false, error: error.message }, status);
       }
     }

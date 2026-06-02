@@ -205,6 +205,34 @@ export async function deleteReplyFromDb(
   return normalizeRequest(reqData);
 }
 
+export async function updateCommentInDb(
+  trackId: number,
+  commentId: string,
+  ownerId: string,
+  patch: { note: string; requester: string }
+) {
+  const note = patch.note.trim();
+  const requester = patch.requester.trim() || "匿名";
+  if (!note) throw new Error("留言内容不能为空");
+  if (note.length > 500) throw new Error("留言过长");
+
+  const { key, reqData } = await loadTrack(trackId);
+  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  if (idx < 0) throw new Error("Comment not found");
+  const comment = normalizeComment(reqData.comments[idx] as Comment);
+  if (comment.ownerId !== ownerId) {
+    throw new Error("Unauthorized or comment not found");
+  }
+  if (comment.isVote === true) {
+    throw new Error("投票记录不能编辑");
+  }
+  comment.note = note;
+  comment.requester = requester;
+  reqData.comments[idx] = comment as SongRequest["comments"][0];
+  await kvSet(key, stamp(normalizeRequest(reqData)));
+  return normalizeRequest(reqData);
+}
+
 export async function deleteCommentFromDb(
   trackId: number,
   commentId: string,

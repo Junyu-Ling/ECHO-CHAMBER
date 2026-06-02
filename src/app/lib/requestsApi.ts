@@ -7,6 +7,7 @@ import {
   listRequestsFromDb,
   toggleCommentLike,
   toggleReplyLike,
+  updateCommentInDb,
   upsertTrackComment,
 } from "./requestsStore";
 
@@ -105,6 +106,18 @@ async function persistToDatabase(body: Record<string, unknown>) {
     if (result.deleted) return { success: true, deleted: true };
     return { success: true, data: result.data };
   }
+  if (action === "editComment") {
+    const data = await updateCommentInDb(
+      body.id as number,
+      body.commentId as string,
+      body.ownerId as string,
+      {
+        note: body.note as string,
+        requester: body.requester as string,
+      }
+    );
+    return { success: true, data };
+  }
 
   throw new Error("Unknown action");
 }
@@ -147,6 +160,15 @@ async function persistViaEdge(body: Record<string, unknown>) {
   } else if (action === "deleteComment") {
     method = "DELETE";
     url = `${SUPABASE_REQUESTS}/${id}/comments/${commentId}`;
+  } else if (action === "editComment") {
+    payload = {
+      action: "editComment",
+      id,
+      commentId,
+      ownerId,
+      note: body.note,
+      requester: body.requester,
+    };
   } else {
     throw new Error("Unknown action");
   }
@@ -199,5 +221,21 @@ export async function deleteCommentViaApi(
     id: trackId,
     commentId,
     ownerId,
+  });
+}
+
+export async function editCommentViaApi(
+  trackId: number,
+  commentId: string,
+  ownerId: string,
+  patch: { note: string; requester: string }
+) {
+  return postRequestsBody({
+    action: "editComment",
+    id: trackId,
+    commentId,
+    ownerId,
+    note: patch.note,
+    requester: patch.requester,
   });
 }
