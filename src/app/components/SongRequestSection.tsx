@@ -1721,6 +1721,7 @@ function LikeButton({
   compact?: boolean;
 }) {
   const iconSize = compact ? 11 : 13;
+  const countFontSize = compact ? "9px" : "10px";
   return (
     <button
       type="button"
@@ -1747,10 +1748,11 @@ function LikeButton({
       />
       <span
         className="tabular-nums leading-none font-medium"
-        style={{ fontSize: compact ? "9px" : "10px" }}
+        style={{ fontSize: countFontSize }}
       >
         {count > 0 ? count : LIKE_BTN}
       </span>
     </button>
   );
 }
+
