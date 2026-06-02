@@ -32,7 +32,7 @@ const members = [
   {
     id: 2,
     name: "刘邑阳",
-    nameEn: "GORDEN",
+    nameEn: "GORDON",
     role: "电吉他手 / 鼓手",
     roleEn: "中国部 G11C2",
     bio: "他的riff像一把刀，划开沉默的夜晚，留下回声",
