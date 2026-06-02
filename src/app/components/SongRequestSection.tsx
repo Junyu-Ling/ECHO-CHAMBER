@@ -1118,6 +1118,11 @@ function RequestCard({
   onCancelEditComment,
   onSaveEditComment,
   voteBusy,
+  editingReplyKey,
+  savingReplyKey,
+  onStartEditReply,
+  onCancelEditReply,
+  onSaveEditReply,
 }: {
   request: SongRequest;
   rank?: number;
@@ -1317,6 +1322,12 @@ function CommentItem({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
+  trackId,
+  editingReplyKey,
+  savingReplyKey,
+  onStartEditReply,
+  onCancelEditReply,
+  onSaveEditReply,
 }: {
   comment: Comment;
   clientId: string;
