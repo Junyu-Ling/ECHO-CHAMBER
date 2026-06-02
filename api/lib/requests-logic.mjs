@@ -213,11 +213,12 @@ export async function editComment(trackId, commentId, ownerId, patch) {
   if (comment.ownerId !== ownerId) {
     throw Object.assign(new Error("Unauthorized or comment not found"), { status: 403 });
   }
-  if (comment.isVote === true) {
-    throw Object.assign(new Error("投票记录不能编辑"), { status: 400 });
-  }
+  const wasVote =
+    comment.isVote === true ||
+    (comment.note === "推荐了这首金曲" && comment.requester === "匿名");
   comment.note = note;
   comment.requester = requester;
+  comment.isVote = wasVote ? note === "推荐了这首金曲" : false;
   reqData.comments[idx] = comment;
   await kv.kvSet(key, stamp(reqData));
   return { success: true, data: normalizeRequest(reqData) };

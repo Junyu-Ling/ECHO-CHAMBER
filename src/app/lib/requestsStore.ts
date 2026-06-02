@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient";
+import { VOTE_NOTE } from "../copy/voteCopy";
 import { inferTimestampFromId } from "./commentTime";
-import { dedupeOwnerComments } from "./voteParticipation";
+import { dedupeOwnerComments, isVoteComment } from "./voteParticipation";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
 
 const TABLE = "kv_store_2914ec93";
@@ -228,11 +229,10 @@ export async function updateCommentInDb(
   if (comment.ownerId !== ownerId) {
     throw new Error("Unauthorized or comment not found");
   }
-  if (comment.isVote === true) {
-    throw new Error("投票记录不能编辑");
-  }
+  const wasVote = comment.isVote === true || isVoteComment(comment);
   comment.note = note;
   comment.requester = requester;
+  comment.isVote = wasVote ? note === VOTE_NOTE : false;
   reqData.comments[idx] = comment as SongRequest["comments"][0];
   await kvSet(key, stamp(normalizeRequest(reqData)));
   return normalizeRequest(reqData);

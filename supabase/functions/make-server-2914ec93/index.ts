@@ -288,11 +288,12 @@ async function editCommentInStore(
   if (comment.ownerId !== ownerId) {
     throw new Error("Unauthorized or comment not found");
   }
-  if (comment.isVote === true) {
-    throw new Error("投票记录不能编辑");
-  }
+  const wasVote =
+    comment.isVote === true ||
+    (comment.note === "推荐了这首金曲" && comment.requester === "匿名");
   comment.note = note;
   comment.requester = requester;
+  comment.isVote = wasVote ? note === "推荐了这首金曲" : false;
   reqData.comments[idx] = comment;
   await kv.set(key, stampReq(reqData));
   return normalizeRequest(reqData);

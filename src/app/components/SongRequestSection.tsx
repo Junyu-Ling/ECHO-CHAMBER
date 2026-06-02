@@ -1252,7 +1252,7 @@ function CommentItem({
   const commentLikeCount = (comment.likedBy || []).length;
   const isOwn = comment.ownerId === clientId;
   /** 仅投票记录不可编辑；勿用「匿名」等昵称误判普通留言 */
-  const canEdit = isOwn && comment.isVote !== true;
+  const canEdit = isOwn;
 
   useEffect(() => {
     if (isEditing) {
