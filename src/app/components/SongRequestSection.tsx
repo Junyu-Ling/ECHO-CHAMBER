@@ -663,6 +663,7 @@ export function SongRequestSection() {
       note: noteInput.trim() || VOTE_NOTE,
       requester: nameInput.trim() || VOTE_REQUESTER,
       ownerId: clientId,
+      isVote: false,
       replies: [],
       likedBy: [],
     });
@@ -1229,7 +1230,8 @@ function CommentItem({
   const commentLiked = isLikedBy(comment.likedBy, clientId);
   const commentLikeCount = (comment.likedBy || []).length;
   const isOwn = comment.ownerId === clientId;
-  const canEdit = isOwn && !isVoteComment(comment);
+  /** 仅投票记录不可编辑；勿用「匿名」等昵称误判普通留言 */
+  const canEdit = isOwn && comment.isVote !== true;
 
   useEffect(() => {
     if (isEditing) {
@@ -1321,32 +1323,36 @@ function CommentItem({
         ) : (
           <div className="flex-1" />
         )}
-        <div className="flex flex-shrink-0 items-center gap-1.5">
+        <div className="flex flex-shrink-0 items-center gap-0.5">
           <LikeButton
             count={commentLikeCount}
             liked={commentLiked}
             busy={commentLikeBusy}
             onToggle={onToggleCommentLike}
           />
-          {canEdit && (
-            <button
-              type="button"
-              onClick={onStartEdit}
-              className="text-muted-foreground/70 hover:text-[#FF9FD4] flex items-center transition-colors p-1"
-              title={COMMENT_EDIT_BTN}
-            >
-              <Pencil size={11} />
-            </button>
-          )}
           {isOwn && (
-            <button
-              type="button"
-              onClick={onDeleteComment}
-              className="text-red-400/70 hover:text-red-400 flex items-center transition-colors p-1"
-              title="删除我的留言"
-            >
-              <Trash2 size={11} />
-            </button>
+            <>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={onStartEdit}
+                  className="text-[#FF9FD4]/85 hover:text-[#FF9FD4] flex items-center transition-colors p-1"
+                  title={COMMENT_EDIT_BTN}
+                  aria-label={COMMENT_EDIT_BTN}
+                >
+                  <Pencil size={11} />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onDeleteComment}
+                className="text-red-400/70 hover:text-red-400 flex items-center transition-colors p-1"
+                title="删除我的留言"
+                aria-label="删除我的留言"
+              >
+                <Trash2 size={11} />
+              </button>
+            </>
           )}
         </div>
       </div>
