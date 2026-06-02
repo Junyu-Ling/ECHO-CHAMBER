@@ -1,6 +1,6 @@
 import { supabase } from "../supabaseClient";
 import { VOTE_NOTE } from "../copy/voteCopy";
-import { inferTimestampFromId } from "./commentTime";
+import { formatCommentTimestamp, inferTimestampFromId } from "./commentTime";
 import { dedupeOwnerComments, isVoteComment } from "./voteParticipation";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
 
@@ -184,6 +184,41 @@ export async function addReplyToDb(
       likedBy: [],
     }),
   ];
+  reqData.comments[idx] = comment as SongRequest["comments"][0];
+  await kvSet(key, stamp(normalizeRequest(reqData)));
+  return normalizeRequest(reqData);
+}
+
+export async function updateReplyInDb(
+  trackId: number,
+  commentId: string,
+  replyId: string,
+  ownerId: string,
+  patch: { note: string; requester: string }
+) {
+  const note = patch.note.trim();
+  const requester = patch.requester.trim() || "匿名";
+  if (!note) throw new Error("回复内容不能为空");
+  if (note.length > 500) throw new Error("回复过长");
+
+  const { key, reqData } = await loadTrack(trackId);
+  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  if (idx < 0) throw new Error("Comment not found");
+  const comment = normalizeComment(reqData.comments[idx] as Comment);
+  const rIdx = (comment.replies || []).findIndex((r) => r.replyId === replyId);
+  if (rIdx < 0) throw new Error("Reply not found");
+  const reply = normalizeReply(comment.replies![rIdx]);
+  if (reply.ownerId !== ownerId) {
+    throw new Error("Unauthorized or reply not found");
+  }
+  const createdAt = reply.createdAt || inferTimestampFromId(reply.replyId) || Date.now();
+  comment.replies![rIdx] = normalizeReply({
+    ...reply,
+    note,
+    requester,
+    createdAt,
+    time: formatCommentTimestamp(createdAt),
+  });
   reqData.comments[idx] = comment as SongRequest["comments"][0];
   await kvSet(key, stamp(normalizeRequest(reqData)));
   return normalizeRequest(reqData);

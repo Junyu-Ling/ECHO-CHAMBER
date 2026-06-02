@@ -160,6 +160,45 @@ export async function addReply(trackId, commentId, reply) {
   return { success: true, data: normalizeRequest(reqData) };
 }
 
+export async function editReply(trackId, commentId, replyId, ownerId, patch) {
+  const note = (patch.note || "").trim();
+  const requester = (patch.requester || "").trim() || "匿名";
+  if (!note) throw Object.assign(new Error("回复内容不能为空"), { status: 400 });
+  if (note.length > 500) throw Object.assign(new Error("回复过长"), { status: 400 });
+
+  const { key, reqData } = await loadTrack(trackId);
+  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  if (idx < 0) throw Object.assign(new Error("Comment not found"), { status: 404 });
+
+  const comment = normalizeComment(reqData.comments[idx]);
+  const rIdx = (comment.replies || []).findIndex((r) => r.replyId === replyId);
+  if (rIdx < 0) throw Object.assign(new Error("Reply not found"), { status: 404 });
+
+  const reply = normalizeReply(comment.replies[rIdx]);
+  if (reply.ownerId !== ownerId) {
+    throw Object.assign(new Error("Unauthorized or reply not found"), { status: 403 });
+  }
+  const m = /^(\d{10,13})/.exec(reply.replyId || "");
+  const createdAt =
+    reply.createdAt > 0
+      ? reply.createdAt
+      : m
+        ? Number(m[1]) < 1e12
+          ? Number(m[1]) * 1000
+          : Number(m[1])
+        : Date.now();
+  comment.replies[rIdx] = normalizeReply({
+    ...reply,
+    note,
+    requester,
+    createdAt,
+    time: new Date(createdAt).toISOString().slice(0, 16).replace("T", " "),
+  });
+  reqData.comments[idx] = comment;
+  await kv.kvSet(key, stamp(reqData));
+  return { success: true, data: normalizeRequest(reqData) };
+}
+
 export async function deleteReply(trackId, commentId, replyId, ownerId) {
   const { key, reqData } = await loadTrack(trackId);
   const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
@@ -232,6 +271,7 @@ export async function postRequest(body) {
     "deleteReply",
     "deleteComment",
     "editComment",
+    "editReply",
   ]);
   if (body.action && !knownActions.has(body.action)) {
     return { status: 400, body: { success: false, error: "Unknown action" } };
@@ -268,6 +308,19 @@ export async function postRequest(body) {
     return {
       status: 200,
       body: await deleteReply(body.id, body.commentId, body.replyId, body.ownerId),
+    };
+  }
+
+  if (body.action === "editReply") {
+    if (!body.id || !body.commentId || !body.replyId || !body.ownerId) {
+      return { status: 400, body: { success: false, error: "Missing fields" } };
+    }
+    return {
+      status: 200,
+      body: await editReply(body.id, body.commentId, body.replyId, body.ownerId, {
+        note: body.note,
+        requester: body.requester,
+      }),
     };
   }
 

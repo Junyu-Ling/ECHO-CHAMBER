@@ -5,6 +5,7 @@ export const REPLY_SUBMIT = "\u53d1\u9001";
 export const REPLY_CANCEL = "\u53d6\u6d88";
 export const REPLY_DELETE_CONFIRM = "\u786e\u5b9a\u8981\u5220\u9664\u8fd9\u6761\u56de\u590d\u5417\uff1f";
 export const REPLY_DELETE_TITLE = "\u5220\u9664\u6211\u7684\u56de\u590d";
+export const REPLY_EDIT_BTN = "\u7f16\u8f91\u56de\u590d";
 export const REPLY_EMPTY_ALERT = "\u8bf7\u5148\u8f93\u5165\u56de\u590d\u5185\u5bb9";
 export const REPLY_DEFAULT_NAME = "\u533f\u540d";
 export const REPLY_TIME_NOW = "\u521a\u521a";

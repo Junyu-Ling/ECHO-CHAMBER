@@ -241,6 +241,47 @@ async function deleteReplyInStore(
   return normalizeRequest(reqData);
 }
 
+async function editReplyInStore(
+  trackId: string | number,
+  commentId: string,
+  replyId: string,
+  ownerId: string,
+  patch: { note?: string; requester?: string },
+) {
+  const note = (patch.note || "").trim();
+  const requester = (patch.requester || "").trim() || "匿名";
+  if (!note) throw new Error("回复内容不能为空");
+  if (note.length > 500) throw new Error("回复过长");
+
+  const key = `req:${trackId}`;
+  const reqData = await kv.get(key);
+  if (!reqData?.comments) throw new Error("Not found");
+
+  const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+  if (idx < 0) throw new Error("Comment not found");
+
+  const comment = normalizeComment(reqData.comments[idx]);
+  const rIdx = (comment.replies || []).findIndex((r: any) => r.replyId === replyId);
+  if (rIdx < 0) throw new Error("Reply not found");
+
+  const reply = normalizeReply(comment.replies[rIdx]);
+  if (reply.ownerId !== ownerId) {
+    throw new Error("Unauthorized or reply not found");
+  }
+  const createdAt = reply.createdAt || inferTimestampFromId(reply.replyId) || Date.now();
+  const timeStr = new Date(createdAt).toISOString().slice(0, 16).replace("T", " ");
+  comment.replies[rIdx] = normalizeReply({
+    ...reply,
+    note,
+    requester,
+    createdAt,
+    time: timeStr,
+  });
+  reqData.comments[idx] = comment;
+  await kv.set(key, stampReq(reqData));
+  return normalizeRequest(reqData);
+}
+
 async function deleteCommentInStore(
   trackId: string | number,
   commentId: string,
@@ -333,6 +374,7 @@ app.post("/make-server-2914ec93/requests", async (c) => {
         "deleteReply",
         "deleteComment",
         "editComment",
+        "editReply",
       ]);
       if (!known.has(action)) {
         return c.json({ success: false, error: "Unknown action" }, 400);
@@ -401,6 +443,26 @@ app.post("/make-server-2914ec93/requests", async (c) => {
       } catch (error: any) {
         console.error("Error deleting reply (action):", error);
         const status = error.message?.includes("not found") ? 404 : 403;
+        return c.json({ success: false, error: error.message }, status);
+      }
+    }
+
+    if (body.action === "editReply") {
+      if (!body.id || !body.commentId || !body.replyId || !body.ownerId) {
+        return c.json({ success: false, error: "Missing fields" }, 400);
+      }
+      try {
+        const data = await editReplyInStore(
+          body.id,
+          body.commentId,
+          body.replyId,
+          body.ownerId,
+          { note: body.note, requester: body.requester },
+        );
+        return c.json({ success: true, data });
+      } catch (error: any) {
+        console.error("Error editing reply (action):", error);
+        const status = error.message?.includes("not found") ? 404 : 400;
         return c.json({ success: false, error: error.message }, status);
       }
     }

@@ -3,7 +3,13 @@ import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Tra
 import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
 import { supabase } from "../supabaseClient";
-import { deleteCommentViaApi, editCommentViaApi, fetchAllRequests, postRequestsBody } from "../lib/requestsApi";
+import {
+  deleteCommentViaApi,
+  editCommentViaApi,
+  editReplyViaApi,
+  fetchAllRequests,
+  postRequestsBody,
+} from "../lib/requestsApi";
 import { normalizeRequest } from "../lib/requestsStore";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
 import {
@@ -25,6 +31,7 @@ import {
   REPLY_DEFAULT_NAME,
   REPLY_DELETE_CONFIRM,
   REPLY_DELETE_TITLE,
+  REPLY_EDIT_BTN,
   REPLY_EMPTY_ALERT,
   REPLY_NAME_PLACEHOLDER,
   REPLY_PLACEHOLDER,
@@ -147,6 +154,8 @@ export function SongRequestSection() {
   const [likingKeys, setLikingKeys] = useState<Set<string>>(new Set());
   const [editingCommentKey, setEditingCommentKey] = useState<string | null>(null);
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
+  const [editingReplyKey, setEditingReplyKey] = useState<string | null>(null);
+  const [savingReplyKey, setSavingReplyKey] = useState<string | null>(null);
 
   const fetchGenerationRef = useRef(0);
   const mutatingCountRef = useRef(0);
@@ -540,6 +549,63 @@ export function SongRequestSection() {
         next.delete(likeKey);
         return next;
       });
+    }
+  };
+
+  const applyReplyTextUpdate = (
+    trackId: number,
+    commentId: string,
+    replyId: string,
+    patch: { note: string; requester: string }
+  ) => {
+    applyReplyUpdate(trackId, commentId, (replies) =>
+      replies.map((r) => (r.replyId === replyId ? { ...r, ...patch } : r))
+    );
+  };
+
+  const handleEditReply = async (
+    trackId: number,
+    commentId: string,
+    replyId: string,
+    note: string,
+    requester: string
+  ) => {
+    const trimmed = note.trim();
+    const name = requester.trim() || REPLY_DEFAULT_NAME;
+    if (!trimmed) {
+      alert(REPLY_EMPTY_ALERT);
+      return;
+    }
+    if (trimmed.length > 500) {
+      alert(COMMENT_EDIT_TOO_LONG);
+      return;
+    }
+
+    const saveKey = `${trackId}:${commentId}:${replyId}`;
+    if (savingReplyKey === saveKey) return;
+
+    const snapshot = requests;
+    applyReplyTextUpdate(trackId, commentId, replyId, {
+      note: trimmed,
+      requester: name,
+    });
+    setEditingReplyKey(null);
+    setSavingReplyKey(saveKey);
+    beginMutation();
+    try {
+      const data = await editReplyViaApi(trackId, commentId, replyId, clientId, {
+        note: trimmed,
+        requester: name,
+      });
+      if (data.data) mergeTrackFromServer(trackId, data.data as SongRequest);
+    } catch (err) {
+      console.error("Error editing reply:", err);
+      setRequests(snapshot);
+      const msg = err instanceof Error ? err.message : "";
+      alert(msg || "保存失败，请稍后重试");
+    } finally {
+      setSavingReplyKey(null);
+      endMutation();
     }
   };
 
@@ -952,6 +1018,15 @@ export function SongRequestSection() {
                     onSaveEditComment={(commentId, note, requester) =>
                       handleEditComment(req.id, commentId, note, requester)
                     }
+                    editingReplyKey={editingReplyKey}
+                    savingReplyKey={savingReplyKey}
+                    onStartEditReply={(commentId, replyId) =>
+                      setEditingReplyKey(`${req.id}:${commentId}:${replyId}`)
+                    }
+                    onCancelEditReply={() => setEditingReplyKey(null)}
+                    onSaveEditReply={(commentId, replyId, note, requester) =>
+                      handleEditReply(req.id, commentId, replyId, note, requester)
+                    }
                   />
                 ))
               )}
@@ -1064,6 +1139,16 @@ function RequestCard({
   onStartEditComment: (commentId: string) => void;
   onCancelEditComment: () => void;
   onSaveEditComment: (commentId: string, note: string, requester: string) => void;
+  editingReplyKey: string | null;
+  savingReplyKey: string | null;
+  onStartEditReply: (commentId: string, replyId: string) => void;
+  onCancelEditReply: () => void;
+  onSaveEditReply: (
+    commentId: string,
+    replyId: string,
+    note: string,
+    requester: string
+  ) => void;
   voteBusy?: boolean;
 }) {
   const pct = Math.round((request.votes / maxVotes) * 100);
@@ -1198,6 +1283,14 @@ function RequestCard({
               onSaveEdit={(note, requester) =>
                 onSaveEditComment(cmt.commentId, note, requester)
               }
+              trackId={trackId}
+              editingReplyKey={editingReplyKey}
+              savingReplyKey={savingReplyKey}
+              onStartEditReply={(replyId) => onStartEditReply(cmt.commentId, replyId)}
+              onCancelEditReply={onCancelEditReply}
+              onSaveEditReply={(replyId, note, requester) =>
+                onSaveEditReply(cmt.commentId, replyId, note, requester)
+              }
             />
           ))}
         </div>
@@ -1242,6 +1335,12 @@ function CommentItem({
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: (note: string, requester: string) => void;
+  trackId: number;
+  editingReplyKey: string | null;
+  savingReplyKey: string | null;
+  onStartEditReply: (replyId: string) => void;
+  onCancelEditReply: () => void;
+  onSaveEditReply: (replyId: string, note: string, requester: string) => void;
 }) {
   const [replyText, setReplyText] = useState("");
   const [replyName, setReplyName] = useState("");
@@ -1251,7 +1350,6 @@ function CommentItem({
   const commentLiked = isLikedBy(comment.likedBy, clientId);
   const commentLikeCount = (comment.likedBy || []).length;
   const isOwn = comment.ownerId === clientId;
-  /** 仅投票记录不可编辑；勿用「匿名」等昵称误判普通留言 */
   const canEdit = isOwn;
 
   useEffect(() => {
@@ -1380,53 +1478,23 @@ function CommentItem({
 
       {replies.length > 0 && (
         <div className="mt-2 flex flex-col gap-1.5 pl-2 border-l border-white/5">
-          {replies.map((reply) => {
-            const replyLiked = isLikedBy(reply.likedBy, clientId);
-            const replyLikeCount = (reply.likedBy || []).length;
-            return (
-              <div key={reply.replyId} className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-foreground text-[11px] font-medium opacity-80">
-                    {reply.requester}
-                  </span>
-                  <time
-                    dateTime={
-                      resolveReplyCreatedAt(reply) > 0
-                        ? new Date(resolveReplyCreatedAt(reply)).toISOString()
-                        : undefined
-                    }
-                    className="text-muted-foreground text-[10px] opacity-40 tabular-nums"
-                  >
-                    {formatReplyTime(reply)}
-                  </time>
-                </div>
-                <div className="flex items-start gap-2">
-                  <p className="flex-1 min-w-0 text-muted-foreground text-[11px] leading-relaxed opacity-75 break-words">
-                    {reply.note}
-                  </p>
-                  <div className="flex flex-shrink-0 items-center gap-1">
-                    <LikeButton
-                      count={replyLikeCount}
-                      liked={replyLiked}
-                      busy={replyLikeBusy(reply.replyId)}
-                      onToggle={() => onToggleReplyLike(reply.replyId)}
-                      compact
-                    />
-                    {reply.ownerId === clientId && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteReply(reply.replyId)}
-                        className="text-red-400/60 hover:text-red-400 flex items-center transition-colors p-0.5"
-                        title={REPLY_DELETE_TITLE}
-                      >
-                        <Trash2 size={9} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {replies.map((reply) => (
+            <ReplyItem
+              key={reply.replyId}
+              reply={reply}
+              clientId={clientId}
+              isEditing={editingReplyKey === `${trackId}:${comment.commentId}:${reply.replyId}`}
+              editBusy={savingReplyKey === `${trackId}:${comment.commentId}:${reply.replyId}`}
+              onStartEdit={() => onStartEditReply(reply.replyId)}
+              onCancelEdit={onCancelEditReply}
+              onSaveEdit={(note, requester) =>
+                onSaveEditReply(reply.replyId, note, requester)
+              }
+              onDelete={() => onDeleteReply(reply.replyId)}
+              onToggleLike={() => onToggleReplyLike(reply.replyId)}
+              likeBusy={replyLikeBusy(reply.replyId)}
+            />
+          ))}
         </div>
       )}
 
@@ -1485,6 +1553,145 @@ function CommentItem({
       )}
         </>
       )}
+    </div>
+  );
+}
+
+function ReplyItem({
+  reply,
+  clientId,
+  isEditing,
+  editBusy,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
+  onToggleLike,
+  likeBusy,
+}: {
+  reply: Reply;
+  clientId: string;
+  isEditing: boolean;
+  editBusy: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (note: string, requester: string) => void;
+  onDelete: () => void;
+  onToggleLike: () => void;
+  likeBusy: boolean;
+}) {
+  const [editName, setEditName] = useState(reply.requester);
+  const [editNote, setEditNote] = useState(reply.note);
+  const isOwn = reply.ownerId === clientId;
+  const replyLiked = isLikedBy(reply.likedBy, clientId);
+  const replyLikeCount = (reply.likedBy || []).length;
+
+  useEffect(() => {
+    if (isEditing) {
+      setEditName(reply.requester);
+      setEditNote(reply.note);
+    }
+  }, [isEditing, reply.requester, reply.note]);
+
+  const submitEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSaveEdit(editNote, editName);
+  };
+
+  if (isEditing) {
+    return (
+      <form onSubmit={submitEdit} className="flex flex-col gap-1.5 py-0.5">
+        <input
+          type="text"
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          placeholder={COMMENT_EDIT_NAME_PLACEHOLDER}
+          maxLength={20}
+          className="w-full px-2 py-1 text-[11px] bg-black/30 border border-white/10 text-foreground rounded-sm outline-none focus:border-[#FF9FD4]/40"
+        />
+        <textarea
+          value={editNote}
+          onChange={(e) => setEditNote(e.target.value)}
+          placeholder={REPLY_PLACEHOLDER}
+          maxLength={500}
+          rows={2}
+          className="w-full px-2 py-1 text-[11px] bg-black/30 border border-white/10 text-foreground rounded-sm outline-none focus:border-[#FF9FD4]/40 resize-y"
+        />
+        <div className="flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={editBusy}
+            className="text-[10px] px-2 py-0.5 disabled:opacity-50"
+            style={{ background: "#FF9FD4", color: "#07070C" }}
+          >
+            {editBusy ? "保存中…" : COMMENT_EDIT_SAVE}
+          </button>
+          <button
+            type="button"
+            disabled={editBusy}
+            onClick={onCancelEdit}
+            className="text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            {COMMENT_EDIT_CANCEL}
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-foreground text-[11px] font-medium opacity-80">
+          {reply.requester}
+        </span>
+        <time
+          dateTime={
+            resolveReplyCreatedAt(reply) > 0
+              ? new Date(resolveReplyCreatedAt(reply)).toISOString()
+              : undefined
+          }
+          className="text-muted-foreground text-[10px] opacity-40 tabular-nums"
+        >
+          {formatReplyTime(reply)}
+        </time>
+      </div>
+      <div className="flex items-start gap-2">
+        <p className="flex-1 min-w-0 text-muted-foreground text-[11px] leading-relaxed opacity-75 break-words">
+          {reply.note}
+        </p>
+        <div className="flex flex-shrink-0 items-center gap-0.5">
+          <LikeButton
+            count={replyLikeCount}
+            liked={replyLiked}
+            busy={likeBusy}
+            onToggle={onToggleLike}
+            compact
+          />
+          {isOwn && (
+            <>
+              <button
+                type="button"
+                onClick={onStartEdit}
+                className="text-[#FF9FD4]/85 hover:text-[#FF9FD4] flex items-center transition-colors p-0.5"
+                title={REPLY_EDIT_BTN}
+                aria-label={REPLY_EDIT_BTN}
+              >
+                <Pencil size={9} />
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                className="text-red-400/60 hover:text-red-400 flex items-center transition-colors p-0.5"
+                title={REPLY_DELETE_TITLE}
+                aria-label={REPLY_DELETE_TITLE}
+              >
+                <Trash2 size={9} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

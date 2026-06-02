@@ -8,6 +8,7 @@ import {
   toggleCommentLike,
   toggleReplyLike,
   updateCommentInDb,
+  updateReplyInDb,
   upsertTrackComment,
 } from "./requestsStore";
 
@@ -169,6 +170,16 @@ async function persistViaEdge(body: Record<string, unknown>) {
       note: body.note,
       requester: body.requester,
     };
+  } else if (action === "editReply") {
+    payload = {
+      action: "editReply",
+      id,
+      commentId,
+      replyId: body.replyId,
+      ownerId,
+      note: body.note,
+      requester: body.requester,
+    };
   } else {
     throw new Error("Unknown action");
   }
@@ -221,6 +232,24 @@ export async function deleteCommentViaApi(
     id: trackId,
     commentId,
     ownerId,
+  });
+}
+
+export async function editReplyViaApi(
+  trackId: number,
+  commentId: string,
+  replyId: string,
+  ownerId: string,
+  patch: { note: string; requester: string }
+) {
+  return postRequestsBody({
+    action: "editReply",
+    id: trackId,
+    commentId,
+    replyId,
+    ownerId,
+    note: patch.note,
+    requester: patch.requester,
   });
 }
 
