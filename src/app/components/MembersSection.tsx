@@ -4,6 +4,8 @@ import nancyPhoto from "../../imports/lQLPKdR7pV4uPB_NAmbNAbuwfOwc6P3wB3IJ8mfbtW
 import maikePhoto from "../../imports/25DC9DC1-439E-4229-AAD5-1B6E8BCA7B10.png";
 import alexanderPhoto from "../../imports/ad81c106b9718346d60bf647dce4c108.jpg";
 import mikePhoto from "../../imports/bcc1145200430316445221f235a19070.jpg";
+import richardPhoto from "../../imports/member-richard.png";
+import shenXinyuPhoto from "../../imports/member-shen-xinyu.png";
 import { ImageWithFallback } from "./ImageWithFallback";
 
 const members = [
@@ -69,7 +71,7 @@ const members = [
     role: "鼓手 / 键盘手",
     roleEn: "中国部 G11C1",
     bio: "音色架构师，通过电子节拍与旋律，拉满现场的潮流暗黑质感",
-    photo: "https://images.unsplash.com/photo-1654134155454-0ac29533f52d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMHlvdW5nJTIwbWFsZSUyMGRqfGVufDF8fHx8MTc4MDMxMzgwNXww&ixlib=rb-4.1.0&q=80&w=1080",
+    photo: richardPhoto,
   },
   {
     id: 7,
@@ -96,7 +98,7 @@ const members = [
     role: "键盘手",
     roleEn: "中国部 G12C1",
     bio: "用沉稳的音符托起每一次情感的爆发，乐队坚实的后盾",
-    photo: "https://images.unsplash.com/photo-1609940539397-3fa778baf74a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMHlvdW5nJTIwZmVtYWxlJTIwYmFzc2lzdHxlbnwxfHx8fDE3ODAzMTM4MDV8MA&ixlib=rb-4.1.0&q=80&w=1080",
+    photo: shenXinyuPhoto,
   },
   {
     id: 11,
