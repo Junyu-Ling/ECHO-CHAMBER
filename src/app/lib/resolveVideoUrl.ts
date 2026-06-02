@@ -1,15 +1,9 @@
 import { getVideoUrl } from "../copy/videoUrls";
 
-/** Production: fetch real LFS/CDN URL from /api/video. Dev: local file URL. */
+/** Resolve play URL: local in dev, GitHub CDN in production (public repo). */
 export async function resolveVideoPlayUrl(id: number): Promise<string> {
-  if (import.meta.env.DEV) {
-    return getVideoUrl(id);
-  }
-
-  const custom = getVideoUrl(id);
-  if (custom.startsWith("http")) {
-    return custom;
-  }
+  const url = getVideoUrl(id);
+  if (url.startsWith("http")) return url;
 
   const res = await fetch(`/api/video?id=${id}&format=json`, {
     headers: { Accept: "application/json" },

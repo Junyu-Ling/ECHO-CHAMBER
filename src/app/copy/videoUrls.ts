@@ -20,12 +20,12 @@ const envOverride: Record<number, string | undefined> = {
   3: import.meta.env.VITE_VIDEO_3,
 };
 
-/** Dev: local files. Prod: /api/video proxy (Git LFS) or VITE_VIDEO_* override. */
+/** Dev: local files. Prod: public GitHub LFS CDN (repo is public). */
 export function getVideoUrl(id: number): string {
   if (import.meta.env.DEV) return devLocal[id];
   const custom = envOverride[id];
   if (custom) return custom;
-  return `/api/video?id=${id}`;
+  return prodCdn[id];
 }
 
 export const videoSources: Record<number, string> = {

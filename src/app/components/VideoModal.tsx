@@ -129,10 +129,7 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
 
           {error ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10 px-6 text-center">
-              <p className="text-muted-foreground text-sm">视频加载失败</p>
-              <p className="text-muted-foreground/60 text-xs">
-                私有仓库需在 Vercel 配置 GITHUB_TOKEN
-              </p>
+              <p className="text-muted-foreground text-sm">视频加载失败，请稍后重试</p>
               <button
                 type="button"
                 className="text-xs px-3 py-1 rounded"
