@@ -4,15 +4,7 @@ import { VideoModal } from "./VideoModal";
 import { VideoThumbnail } from "./VideoThumbnail";
 import { SectionHeader } from "./SectionHeader";
 import { videoMeta, sectionLabel, dateVenueSep } from "../copy/videoMeta";
-import tempVideo from "../../imports/__.mp4";
-import videoYsh from "../../imports/_______1_-2.mp4";
-import videoXshlds from "../../imports/_________1_-1.mp4";
-
-const videoSources: Record<number, string> = {
-  1: tempVideo,
-  2: videoYsh,
-  3: videoXshlds,
-};
+import { videoSources } from "../copy/videoUrls";
 
 const videos = videoMeta.map((v) => ({
   ...v,
