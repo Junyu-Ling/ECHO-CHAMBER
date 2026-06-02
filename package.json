@@ -8,7 +8,9 @@
     "build": "vite build",
     "dev": "vite",
     "sync:github": "node scripts/git-sync.mjs",
-    "media:generate": "node scripts/generate-media.mjs"
+    "media:generate": "node scripts/generate-media.mjs",
+    "deploy:edge": "supabase functions deploy make-server-2914ec93 --project-ref fmhxulxydthrldwuavuc",
+    "db:kv-policies": "node scripts/apply-kv-policies.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

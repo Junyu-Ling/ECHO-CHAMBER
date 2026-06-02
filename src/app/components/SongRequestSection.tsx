@@ -3,7 +3,9 @@ import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Tra
 import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
 import { supabase } from "../supabaseClient";
-import { requestsApiBase, getAuthHeaders, postRequestsBody } from "../lib/requestsApi";
+import { fetchAllRequests, postRequestsBody } from "../lib/requestsApi";
+import { normalizeRequest } from "../lib/requestsStore";
+import type { Comment, Reply, SongRequest } from "../types/songRequest";
 import { VOTE_NOTE, VOTE_REQUESTER, VOTE_ADD_TITLE, VOTE_CANCEL_TITLE } from "../copy/voteCopy";
 import {
   REPLY_BTN,
@@ -32,26 +34,6 @@ const getClientId = () => {
   return id;
 };
 
-interface Reply {
-  replyId: string;
-  note: string;
-  requester: string;
-  time: string;
-  ownerId: string;
-  likedBy?: string[];
-}
-
-interface Comment {
-  commentId: string;
-  note: string;
-  requester: string;
-  time: string;
-  ownerId: string;
-  isVote?: boolean;
-  replies?: Reply[];
-  likedBy?: string[];
-}
-
 function toggleLikedByList(likedBy: string[] | undefined, ownerId: string) {
   const list = [...(likedBy || [])];
   const idx = list.indexOf(ownerId);
@@ -64,22 +46,8 @@ function isLikedBy(likedBy: string[] | undefined, ownerId: string) {
   return (likedBy || []).includes(ownerId);
 }
 
-function normalizeRequestClient(req: SongRequest): SongRequest {
-  return {
-    ...req,
-    comments: (req.comments || []).map((c) => ({
-      ...c,
-      likedBy: Array.isArray(c.likedBy) ? c.likedBy : [],
-      replies: (c.replies || []).map((r) => ({
-        ...r,
-        likedBy: Array.isArray(r.likedBy) ? r.likedBy : [],
-      })),
-    })),
-  };
-}
-
 function normalizeRequestsList(list: SongRequest[]) {
-  return list.map(normalizeRequestClient);
+  return list.map(normalizeRequest);
 }
 
 function getTrackTimestamp(req: SongRequest) {
@@ -90,7 +58,7 @@ function getTrackTimestamp(req: SongRequest) {
 function mergeRequestsList(prev: SongRequest[], incoming: SongRequest[]) {
   const prevById = new Map(prev.map((r) => [r.id, r]));
   return incoming.map((remote) => {
-    const normalized = normalizeRequestClient(remote);
+    const normalized = normalizeRequest(remote);
     const local = prevById.get(normalized.id);
     if (!local) return normalized;
     return getTrackTimestamp(normalized) >= getTrackTimestamp(local)
@@ -100,7 +68,7 @@ function mergeRequestsList(prev: SongRequest[], incoming: SongRequest[]) {
 }
 
 function applyTrackFromRemote(prev: SongRequest[], remote: SongRequest) {
-  const normalized = normalizeRequestClient(remote);
+  const normalized = normalizeRequest(remote);
   const idx = prev.findIndex((r) => r.id === normalized.id);
   if (idx < 0) {
     if (!normalized.comments?.length) return prev;
@@ -132,19 +100,6 @@ function collectVotedIds(list: SongRequest[], clientId: string) {
     }
   }
   return voted;
-}
-
-interface SongRequest {
-  id: number;
-  song: string;
-  artist?: string;
-  artwork?: string;
-  previewUrl?: string;
-  votes: number;
-  comments: Comment[];
-  createdAt: number;
-  updatedAt?: number;
-  hasVoted?: boolean;
 }
 
 type SortMode = "hot" | "new";
@@ -202,17 +157,9 @@ export function SongRequestSection() {
     const fetchInitial = async () => {
       const gen = ++fetchGenerationRef.current;
       try {
-        const res = await fetch(requestsApiBase, { headers: getAuthHeaders() });
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        const data = await res.json();
+        const list = await fetchAllRequests();
         if (cancelled || gen !== fetchGenerationRef.current) return;
-        if (data.success) {
-          setRequests((prev) =>
-            mergeRequestsList(prev, normalizeRequestsList(data.data))
-          );
-        } else {
-          console.error("Server returned error fetching requests:", data.error);
-        }
+        setRequests((prev) => mergeRequestsList(prev, normalizeRequestsList(list)));
       } catch (err) {
         console.error("Network or parsing error fetching requests:", err);
       } finally {
@@ -228,8 +175,6 @@ export function SongRequestSection() {
         "postgres_changes",
         { event: "*", schema: "public", table: "kv_store_2914ec93" },
         (payload) => {
-          if (mutatingCountRef.current > 0) return;
-
           if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
             const key = payload.new.key as string;
             if (!key?.startsWith("req:")) return;
@@ -291,14 +236,9 @@ export function SongRequestSection() {
   const refetchRequests = async () => {
     const gen = ++fetchGenerationRef.current;
     try {
-      const res = await fetch(requestsApiBase, { headers: getAuthHeaders() });
-      const data = await res.json();
+      const list = await fetchAllRequests();
       if (gen !== fetchGenerationRef.current) return;
-      if (data.success) {
-        setRequests((prev) =>
-          mergeRequestsList(prev, normalizeRequestsList(data.data))
-        );
-      }
+      setRequests((prev) => mergeRequestsList(prev, normalizeRequestsList(list)));
     } catch {
       /* ignore */
     }
@@ -355,7 +295,7 @@ export function SongRequestSection() {
   };
 
   const mergeTrackFromServer = (trackId: number, data: SongRequest) => {
-    const normalized = normalizeRequestClient(data);
+    const normalized = normalizeRequest(data);
     setRequests((prev) => prev.map((r) => (r.id === trackId ? normalized : r)));
   };
 
@@ -608,22 +548,14 @@ export function SongRequestSection() {
             : r
         )
       );
-      const res = await fetch(requestsApiBase, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          id,
-          song: existingReq.song,
-          artist: existingReq.artist,
-          artwork: existingReq.artwork,
-          previewUrl: existingReq.previewUrl,
-          comments: [newComment],
-        }),
+      const data = await postRequestsBody({
+        id,
+        song: existingReq.song,
+        artist: existingReq.artist,
+        artwork: existingReq.artwork,
+        previewUrl: existingReq.previewUrl,
+        comments: [newComment],
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "vote failed");
-      }
       if (data.data) {
         mergeTrackFromServer(id, data.data);
       }

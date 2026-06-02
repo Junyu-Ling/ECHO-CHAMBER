@@ -165,6 +165,17 @@ export async function deleteComment(trackId, commentId, ownerId) {
 }
 
 export async function postRequest(body) {
+  const knownActions = new Set([
+    "toggleCommentLike",
+    "toggleReplyLike",
+    "addReply",
+    "deleteReply",
+    "deleteComment",
+  ]);
+  if (body.action && !knownActions.has(body.action)) {
+    return { status: 400, body: { success: false, error: "Unknown action" } };
+  }
+
   if (body.action === "toggleCommentLike") {
     if (!body.id || !body.commentId || !body.ownerId) {
       return { status: 400, body: { success: false, error: "Missing fields" } };
@@ -207,6 +218,10 @@ export async function postRequest(body) {
       status: 200,
       body: await deleteComment(body.id, body.commentId, body.ownerId),
     };
+  }
+
+  if (body.action) {
+    return { status: 400, body: { success: false, error: "Invalid action" } };
   }
 
   const id = body.id;
