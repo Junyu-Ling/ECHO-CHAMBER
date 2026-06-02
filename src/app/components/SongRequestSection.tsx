@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2, Reply, Heart } from "lucide-react";
 import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { supabase } from "../supabaseClient";
+import { requestsApiBase, getAuthHeaders, postRequestsBody } from "../lib/requestsApi";
 import { VOTE_NOTE, VOTE_REQUESTER, VOTE_ADD_TITLE, VOTE_CANCEL_TITLE } from "../copy/voteCopy";
 import {
   REPLY_BTN,
@@ -19,18 +19,7 @@ import {
 } from "../copy/replyCopy";
 import { LIKE_BTN, LIKE_TITLE, UNLIKE_TITLE } from "../copy/likeCopy";
 
-const serverUrl = `https://${projectId}.supabase.co/functions/v1/make-server-2914ec93`;
-
-const getAuthHeaders = () => {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (publicAnonKey) {
-    headers["Authorization"] = `Bearer ${publicAnonKey}`;
-    headers["apikey"] = publicAnonKey;
-  }
-  return headers;
-};
+// requestsApiBase + getAuthHeaders from ../lib/requestsApi
 
 // 获取唯一的设备ID用于判断"自己的"点歌
 const getClientId = () => {
@@ -163,7 +152,7 @@ export function SongRequestSection() {
 
   useEffect(() => {
     const fetchData = () => {
-      fetch(`${serverUrl}/requests`, {
+      fetch(requestsApiBase, {
         headers: getAuthHeaders(),
       })
         .then((res) => {
@@ -252,7 +241,7 @@ export function SongRequestSection() {
 
   const refetchRequests = async () => {
     try {
-      const res = await fetch(`${serverUrl}/requests`, { headers: getAuthHeaders() });
+      const res = await fetch(requestsApiBase, { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success) setRequests(normalizeRequestsList(data.data));
     } catch {
@@ -266,15 +255,7 @@ export function SongRequestSection() {
     commentId: string;
     replyId?: string;
   }) => {
-    const res = await fetch(`${serverUrl}/requests`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ ...payload, ownerId: clientId }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || "like failed");
-    }
+    const data = await postRequestsBody({ ...payload, ownerId: clientId });
     return data.data as SongRequest;
   };
 
@@ -291,15 +272,12 @@ export function SongRequestSection() {
   };
 
   const removeCommentOnServer = async (trackId: number, commentId: string) => {
-    const res = await fetch(`${serverUrl}/requests/${trackId}/comments/${commentId}`, {
-      method: "DELETE",
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ ownerId: clientId }),
+    await postRequestsBody({
+      action: "deleteComment",
+      id: trackId,
+      commentId,
+      ownerId: clientId,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || "delete failed");
-    }
   };
 
   const handleDeleteComment = async (trackId: number, commentId: string) => {
@@ -314,6 +292,11 @@ export function SongRequestSection() {
     } catch (err) {
       console.error("Error deleting comment:", err);
     }
+  };
+
+  const mergeTrackFromServer = (trackId: number, data: SongRequest) => {
+    const normalized = normalizeRequestClient(data);
+    setRequests((prev) => prev.map((r) => (r.id === trackId ? normalized : r)));
   };
 
   const applyReplyUpdate = (trackId: number, commentId: string, updater: (replies: Reply[]) => Reply[]) => {
@@ -361,20 +344,14 @@ export function SongRequestSection() {
     setReplyingKey(null);
 
     try {
-      const res = await fetch(
-        `${serverUrl}/requests/${trackId}/comments/${commentId}/replies`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ reply: newReply }),
-        }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "reply failed");
-      }
+      const data = await postRequestsBody({
+        action: "addReply",
+        id: trackId,
+        commentId,
+        reply: newReply,
+      });
       if (data.data) {
-        setRequests((prev) => prev.map((r) => (r.id === trackId ? data.data : r)));
+        mergeTrackFromServer(trackId, data.data);
       }
     } catch (err) {
       console.error("Error adding reply:", err);
@@ -382,11 +359,6 @@ export function SongRequestSection() {
     } finally {
       setSubmittingReplyKey(null);
     }
-  };
-
-  const mergeTrackFromServer = (trackId: number, data: SongRequest) => {
-    const normalized = normalizeRequestClient(data);
-    setRequests((prev) => prev.map((r) => (r.id === trackId ? normalized : r)));
   };
 
   const handleToggleCommentLike = async (trackId: number, commentId: string) => {
@@ -488,20 +460,15 @@ export function SongRequestSection() {
     );
 
     try {
-      const res = await fetch(
-        `${serverUrl}/requests/${trackId}/comments/${commentId}/replies/${replyId}`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ ownerId: clientId }),
-        }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "delete reply failed");
-      }
+      const data = await postRequestsBody({
+        action: "deleteReply",
+        id: trackId,
+        commentId,
+        replyId,
+        ownerId: clientId,
+      });
       if (data.data) {
-        setRequests((prev) => prev.map((r) => (r.id === trackId ? data.data : r)));
+        mergeTrackFromServer(trackId, data.data);
       }
     } catch (err) {
       console.error("Error deleting reply:", err);
@@ -557,7 +524,7 @@ export function SongRequestSection() {
             : r
         )
       );
-      const res = await fetch(`${serverUrl}/requests`, {
+      const res = await fetch(requestsApiBase, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -655,7 +622,7 @@ export function SongRequestSection() {
     setTimeout(() => setSubmitted(false), 3000);
 
     try {
-      const res = await fetch(`${serverUrl}/requests`, {
+      const res = await fetch(requestsApiBase, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(payload),

@@ -120,6 +120,91 @@ async function toggleReplyLikeInStore(
   return normalizeRequest(reqData);
 }
 
+async function addReplyInStore(
+  trackId: string | number,
+  commentId: string,
+  reply: any,
+) {
+  if (!reply?.ownerId) throw new Error("Missing ownerId");
+  const note = (reply.note || "").trim();
+  if (!note) throw new Error("回复内容不能为空");
+  if (note.length > 500) throw new Error("回复过长");
+
+  const key = `req:${trackId}`;
+  const reqData = await kv.get(key);
+  if (!reqData?.comments) throw new Error("Not found");
+
+  const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+  if (idx < 0) throw new Error("Comment not found");
+
+  const comment = normalizeComment(reqData.comments[idx]);
+  comment.replies = [
+    ...(comment.replies || []),
+    normalizeReply({
+      replyId: reply.replyId || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      note,
+      requester: (reply.requester || "匿名").trim() || "匿名",
+      time: reply.time || "刚刚",
+      ownerId: reply.ownerId,
+      likedBy: [],
+    }),
+  ];
+  reqData.comments[idx] = comment;
+  await kv.set(key, reqData);
+  return normalizeRequest(reqData);
+}
+
+async function deleteReplyInStore(
+  trackId: string | number,
+  commentId: string,
+  replyId: string,
+  ownerId: string,
+) {
+  const key = `req:${trackId}`;
+  const reqData = await kv.get(key);
+  if (!reqData?.comments) throw new Error("Not found");
+
+  const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+  if (idx < 0) throw new Error("Comment not found");
+
+  const comment = normalizeComment(reqData.comments[idx]);
+  const before = (comment.replies || []).length;
+  comment.replies = (comment.replies || []).filter(
+    (r: any) => !(r.replyId === replyId && r.ownerId === ownerId),
+  );
+  if (comment.replies.length === before) {
+    throw new Error("Unauthorized or reply not found");
+  }
+  reqData.comments[idx] = comment;
+  await kv.set(key, reqData);
+  return normalizeRequest(reqData);
+}
+
+async function deleteCommentInStore(
+  trackId: string | number,
+  commentId: string,
+  ownerId: string,
+) {
+  const key = `req:${trackId}`;
+  const reqData = await kv.get(key);
+  if (!reqData?.comments) throw new Error("Not found");
+
+  const originalLen = reqData.comments.length;
+  reqData.comments = reqData.comments.filter(
+    (cmt: any) => !(cmt.commentId === commentId && cmt.ownerId === ownerId),
+  );
+  if (reqData.comments.length === originalLen) {
+    throw new Error("Unauthorized or comment not found");
+  }
+  reqData.votes = reqData.comments.length;
+  if (reqData.votes === 0) {
+    await kv.del(key);
+    return { deleted: true };
+  }
+  await kv.set(key, reqData);
+  return { data: normalizeRequest(reqData) };
+}
+
 // Get all requests
 app.get("/make-server-2914ec93/requests", async (c) => {
   try {
@@ -174,6 +259,54 @@ app.post("/make-server-2914ec93/requests", async (c) => {
       } catch (error: any) {
         console.error("Error toggling reply like (action):", error);
         const status = error.message?.includes("not found") ? 404 : 500;
+        return c.json({ success: false, error: error.message }, status);
+      }
+    }
+
+    if (body.action === "addReply") {
+      if (!body.id || !body.commentId || !body.reply) {
+        return c.json({ success: false, error: "Missing fields" }, 400);
+      }
+      try {
+        const data = await addReplyInStore(body.id, body.commentId, body.reply);
+        return c.json({ success: true, data });
+      } catch (error: any) {
+        console.error("Error adding reply (action):", error);
+        const status = error.message?.includes("not found") ? 404 : 400;
+        return c.json({ success: false, error: error.message }, status);
+      }
+    }
+
+    if (body.action === "deleteReply") {
+      if (!body.id || !body.commentId || !body.replyId || !body.ownerId) {
+        return c.json({ success: false, error: "Missing fields" }, 400);
+      }
+      try {
+        const data = await deleteReplyInStore(
+          body.id,
+          body.commentId,
+          body.replyId,
+          body.ownerId,
+        );
+        return c.json({ success: true, data });
+      } catch (error: any) {
+        console.error("Error deleting reply (action):", error);
+        const status = error.message?.includes("not found") ? 404 : 403;
+        return c.json({ success: false, error: error.message }, status);
+      }
+    }
+
+    if (body.action === "deleteComment") {
+      if (!body.id || !body.commentId || !body.ownerId) {
+        return c.json({ success: false, error: "Missing fields" }, 400);
+      }
+      try {
+        const result = await deleteCommentInStore(body.id, body.commentId, body.ownerId);
+        if (result.deleted) return c.json({ success: true, deleted: true });
+        return c.json({ success: true, data: result.data });
+      } catch (error: any) {
+        console.error("Error deleting comment (action):", error);
+        const status = error.message?.includes("not found") ? 404 : 403;
         return c.json({ success: false, error: error.message }, status);
       }
     }
