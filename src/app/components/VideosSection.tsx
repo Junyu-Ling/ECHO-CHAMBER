@@ -4,12 +4,12 @@ import { VideoModal } from "./VideoModal";
 import { VideoThumbnail } from "./VideoThumbnail";
 import { SectionHeader } from "./SectionHeader";
 import { videoMeta, sectionLabel, dateVenueSep } from "../copy/videoMeta";
-import { videoSources } from "../copy/videoUrls";
+import { getVideoUrl } from "../copy/videoUrls";
 import { videoPosters } from "../copy/videoPosters";
 
 const videos = videoMeta.map((v) => ({
   ...v,
-  videoUrl: videoSources[v.id],
+  videoUrl: getVideoUrl(v.id),
   poster: videoPosters[v.id],
 }));
 
@@ -53,10 +53,11 @@ function VideoCard({
 
   return (
     <button
+      type="button"
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="text-left group w-full"
+      className="text-left group w-full cursor-pointer"
       style={{ background: "#0E0E1C", border: "1px solid rgba(255,255,255,0.07)" }}
     >
       <VideoThumbnail
