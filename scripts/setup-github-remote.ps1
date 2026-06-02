@@ -14,7 +14,7 @@ if (-not (Test-Path .git)) {
 }
 
 $branch = "ECHO-CHAMBER"
-git checkout -B $branch 2>$null
+git checkout -B $branch 2>&1 | Out-Null
 
 if (git remote get-url origin 2>$null) {
   git remote set-url origin $RepoUrl
