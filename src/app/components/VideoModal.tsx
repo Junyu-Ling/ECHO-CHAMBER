@@ -41,6 +41,26 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
     setError(false);
   }, [video.id, video.videoUrl]);
 
+  const tryAutoplay = async () => {
+    const el = videoRef.current;
+    if (!el) return;
+    try {
+      await el.play();
+      setPlaying(true);
+      setLoading(false);
+    } catch {
+      try {
+        el.muted = true;
+        await el.play();
+        el.muted = false;
+        setPlaying(true);
+        setLoading(false);
+      } catch {
+        setLoading(false);
+      }
+    }
+  };
+
   const modal = (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-10"
@@ -86,8 +106,10 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
                 onClick={() => {
                   setError(false);
                   setLoading(true);
-                  if (videoRef.current) {
-                    videoRef.current.load();
+                  const el = videoRef.current;
+                  if (el) {
+                    el.load();
+                    el.addEventListener("canplay", () => tryAutoplay(), { once: true });
                   }
                 }}
               >
@@ -101,15 +123,15 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
               src={video.videoUrl}
               poster={video.poster}
               controls
+              autoPlay
               playsInline
               className="relative z-[1] w-full h-full object-cover"
               preload="auto"
-              onLoadedData={() => setLoading(false)}
-              onCanPlay={() => {
-                setLoading(false);
+              onCanPlay={tryAutoplay}
+              onPlaying={() => {
                 setPlaying(true);
+                setLoading(false);
               }}
-              onPlaying={() => setPlaying(true)}
               onError={() => {
                 setLoading(false);
                 setError(true);
