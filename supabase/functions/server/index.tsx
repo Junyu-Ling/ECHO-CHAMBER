@@ -23,10 +23,26 @@ app.use(
 // Health check
 app.get("/make-server-2914ec93/health", (c) => c.json({ status: "ok" }));
 
+function normalizeReply(reply: any) {
+  return {
+    ...reply,
+    likedBy: Array.isArray(reply.likedBy) ? reply.likedBy : [],
+  };
+}
+
+function toggleLikedBy(likedBy: string[], ownerId: string) {
+  const list = [...(likedBy || [])];
+  const idx = list.indexOf(ownerId);
+  if (idx >= 0) list.splice(idx, 1);
+  else list.push(ownerId);
+  return list;
+}
+
 function normalizeComment(cmt: any) {
   return {
     ...cmt,
-    replies: Array.isArray(cmt.replies) ? cmt.replies : [],
+    likedBy: Array.isArray(cmt.likedBy) ? cmt.likedBy : [],
+    replies: Array.isArray(cmt.replies) ? cmt.replies.map(normalizeReply) : [],
   };
 }
 
@@ -187,13 +203,14 @@ app.post("/make-server-2914ec93/requests/:id/comments/:commentId/replies", async
     }
 
     const comment = normalizeComment(reqData.comments[idx]);
-    comment.replies = [...(comment.replies || []), {
+    comment.replies = [...(comment.replies || []), normalizeReply({
       replyId: reply.replyId || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       note,
       requester: (reply.requester || "匿名").trim() || "匿名",
       time: reply.time || "刚刚",
       ownerId: reply.ownerId,
-    }];
+      likedBy: [],
+    })];
     reqData.comments[idx] = comment;
     await kv.set(key, reqData);
     return c.json({ success: true, data: normalizeRequest(reqData) });
@@ -236,6 +253,80 @@ app.delete("/make-server-2914ec93/requests/:id/comments/:commentId/replies/:repl
     return c.json({ success: true, data: normalizeRequest(reqData) });
   } catch (error: any) {
     console.error("Error deleting reply:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// Toggle like on a comment (does not change song vote count)
+app.post("/make-server-2914ec93/requests/:id/comments/:commentId/like", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const commentId = c.req.param("commentId");
+    const body = await c.req.json();
+    const ownerId = body.ownerId;
+    if (!ownerId) {
+      return c.json({ success: false, error: "Missing ownerId" }, 400);
+    }
+
+    const key = `req:${id}`;
+    const reqData = await kv.get(key);
+    if (!reqData?.comments) {
+      return c.json({ success: false, error: "Not found" }, 404);
+    }
+
+    const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+    if (idx < 0) {
+      return c.json({ success: false, error: "Comment not found" }, 404);
+    }
+
+    const comment = normalizeComment(reqData.comments[idx]);
+    comment.likedBy = toggleLikedBy(comment.likedBy, ownerId);
+    reqData.comments[idx] = comment;
+    await kv.set(key, reqData);
+    return c.json({ success: true, data: normalizeRequest(reqData) });
+  } catch (error: any) {
+    console.error("Error toggling comment like:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// Toggle like on a reply (does not change song vote count)
+app.post("/make-server-2914ec93/requests/:id/comments/:commentId/replies/:replyId/like", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const commentId = c.req.param("commentId");
+    const replyId = c.req.param("replyId");
+    const body = await c.req.json();
+    const ownerId = body.ownerId;
+    if (!ownerId) {
+      return c.json({ success: false, error: "Missing ownerId" }, 400);
+    }
+
+    const key = `req:${id}`;
+    const reqData = await kv.get(key);
+    if (!reqData?.comments) {
+      return c.json({ success: false, error: "Not found" }, 404);
+    }
+
+    const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+    if (idx < 0) {
+      return c.json({ success: false, error: "Comment not found" }, 404);
+    }
+
+    const comment = normalizeComment(reqData.comments[idx]);
+    const rIdx = (comment.replies || []).findIndex((r: any) => r.replyId === replyId);
+    if (rIdx < 0) {
+      return c.json({ success: false, error: "Reply not found" }, 404);
+    }
+
+    const reply = normalizeReply(comment.replies[rIdx]);
+    reply.likedBy = toggleLikedBy(reply.likedBy, ownerId);
+    comment.replies[rIdx] = reply;
+    reqData.comments[idx] = comment;
+    await kv.set(key, reqData);
+    return c.json({ success: true, data: normalizeRequest(reqData) });
+  } catch (error: any) {
+    console.error("Error toggling reply like:", error);
     return c.json({ success: false, error: error.message }, 500);
   }
 });

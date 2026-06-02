@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2, Reply } from "lucide-react";
+import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2, Reply, Heart } from "lucide-react";
 import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
@@ -17,6 +17,7 @@ import {
   REPLY_SUBMIT,
   REPLY_TIME_NOW,
 } from "../copy/replyCopy";
+import { LIKE_BTN, LIKE_TITLE, UNLIKE_TITLE } from "../copy/likeCopy";
 
 const serverUrl = `https://${projectId}.supabase.co/functions/v1/make-server-2914ec93`;
 
@@ -48,6 +49,7 @@ interface Reply {
   requester: string;
   time: string;
   ownerId: string;
+  likedBy?: string[];
 }
 
 interface Comment {
@@ -58,6 +60,19 @@ interface Comment {
   ownerId: string;
   isVote?: boolean;
   replies?: Reply[];
+  likedBy?: string[];
+}
+
+function toggleLikedByList(likedBy: string[] | undefined, ownerId: string) {
+  const list = [...(likedBy || [])];
+  const idx = list.indexOf(ownerId);
+  if (idx >= 0) list.splice(idx, 1);
+  else list.push(ownerId);
+  return list;
+}
+
+function isLikedBy(likedBy: string[] | undefined, ownerId: string) {
+  return (likedBy || []).includes(ownerId);
 }
 
 function isVoteComment(c: Comment) {
@@ -105,6 +120,7 @@ export function SongRequestSection() {
   const [votingIds, setVotingIds] = useState<Set<number>>(new Set());
   const [replyingKey, setReplyingKey] = useState<string | null>(null);
   const [submittingReplyKey, setSubmittingReplyKey] = useState<string | null>(null);
+  const [likingKeys, setLikingKeys] = useState<Set<string>>(new Set());
 
   // 初始化从localStorage读取已投票记录
   useEffect(() => {
@@ -300,6 +316,7 @@ export function SongRequestSection() {
       requester: requester.trim() || REPLY_DEFAULT_NAME,
       time: REPLY_TIME_NOW,
       ownerId: clientId,
+      likedBy: [],
     };
 
     setSubmittingReplyKey(replyKey);
@@ -327,6 +344,106 @@ export function SongRequestSection() {
       await refetchRequests();
     } finally {
       setSubmittingReplyKey(null);
+    }
+  };
+
+  const mergeTrackFromServer = (trackId: number, data: SongRequest) => {
+    setRequests((prev) => prev.map((r) => (r.id === trackId ? data : r)));
+  };
+
+  const handleToggleCommentLike = async (trackId: number, commentId: string) => {
+    const likeKey = `c:${trackId}:${commentId}`;
+    if (likingKeys.has(likeKey)) return;
+
+    setLikingKeys((prev) => new Set(prev).add(likeKey));
+    setRequests((prev) =>
+      prev.map((r) => {
+        if (r.id !== trackId) return r;
+        return {
+          ...r,
+          comments: r.comments.map((c) =>
+            c.commentId === commentId
+              ? { ...c, likedBy: toggleLikedByList(c.likedBy, clientId) }
+              : c
+          ),
+        };
+      })
+    );
+
+    try {
+      const res = await fetch(
+        `${serverUrl}/requests/${trackId}/comments/${commentId}/like`,
+        {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ ownerId: clientId }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || "like failed");
+      if (data.data) mergeTrackFromServer(trackId, data.data);
+    } catch (err) {
+      console.error("Error toggling comment like:", err);
+      await refetchRequests();
+    } finally {
+      setLikingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(likeKey);
+        return next;
+      });
+    }
+  };
+
+  const handleToggleReplyLike = async (
+    trackId: number,
+    commentId: string,
+    replyId: string
+  ) => {
+    const likeKey = `r:${trackId}:${commentId}:${replyId}`;
+    if (likingKeys.has(likeKey)) return;
+
+    setLikingKeys((prev) => new Set(prev).add(likeKey));
+    setRequests((prev) =>
+      prev.map((r) => {
+        if (r.id !== trackId) return r;
+        return {
+          ...r,
+          comments: r.comments.map((c) => {
+            if (c.commentId !== commentId) return c;
+            return {
+              ...c,
+              replies: (c.replies || []).map((reply) =>
+                reply.replyId === replyId
+                  ? { ...reply, likedBy: toggleLikedByList(reply.likedBy, clientId) }
+                  : reply
+              ),
+            };
+          }),
+        };
+      })
+    );
+
+    try {
+      const res = await fetch(
+        `${serverUrl}/requests/${trackId}/comments/${commentId}/replies/${replyId}/like`,
+        {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ ownerId: clientId }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || "like failed");
+      if (data.data) mergeTrackFromServer(trackId, data.data);
+    } catch (err) {
+      console.error("Error toggling reply like:", err);
+      await refetchRequests();
+    } finally {
+      setLikingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(likeKey);
+        return next;
+      });
     }
   };
 
@@ -393,6 +510,7 @@ export function SongRequestSection() {
         ownerId: clientId,
         isVote: true,
         replies: [],
+        likedBy: [],
       };
 
       setRequests((prev) =>
@@ -457,6 +575,7 @@ export function SongRequestSection() {
       time: "刚刚",
       ownerId: clientId,
       replies: [],
+      likedBy: [],
     };
 
     const commentsToSubmit = [newComment];
@@ -712,6 +831,14 @@ export function SongRequestSection() {
                       setReplyingKey((prev) => (prev === key ? null : key));
                     }}
                     submittingReplyKey={submittingReplyKey}
+                    onToggleCommentLike={(commentId) =>
+                      handleToggleCommentLike(req.id, commentId)
+                    }
+                    onToggleReplyLike={(commentId, replyId) =>
+                      handleToggleReplyLike(req.id, commentId, replyId)
+                    }
+                    likingKeys={likingKeys}
+                    trackId={req.id}
                     clientId={clientId}
                   />
                 ))
@@ -807,6 +934,10 @@ function RequestCard({
   replyingKey,
   onToggleReply,
   submittingReplyKey,
+  onToggleCommentLike,
+  onToggleReplyLike,
+  likingKeys,
+  trackId,
   clientId,
   voteBusy,
 }: {
@@ -820,6 +951,10 @@ function RequestCard({
   replyingKey: string | null;
   onToggleReply: (commentId: string) => void;
   submittingReplyKey: string | null;
+  onToggleCommentLike: (commentId: string) => void;
+  onToggleReplyLike: (commentId: string, replyId: string) => void;
+  likingKeys: Set<string>;
+  trackId: number;
   clientId: string;
   voteBusy?: boolean;
 }) {
@@ -934,6 +1069,12 @@ function RequestCard({
               isReplying={replyingKey === `${request.id}:${cmt.commentId}`}
               onToggleReply={() => onToggleReply(cmt.commentId)}
               replyBusy={submittingReplyKey === `${request.id}:${cmt.commentId}`}
+              onToggleCommentLike={() => onToggleCommentLike(cmt.commentId)}
+              onToggleReplyLike={(replyId) => onToggleReplyLike(cmt.commentId, replyId)}
+              commentLikeBusy={likingKeys.has(`c:${trackId}:${cmt.commentId}`)}
+              replyLikeBusy={(replyId) =>
+                likingKeys.has(`r:${trackId}:${cmt.commentId}:${replyId}`)
+              }
             />
           ))}
         </div>
@@ -951,6 +1092,10 @@ function CommentItem({
   isReplying,
   onToggleReply,
   replyBusy,
+  onToggleCommentLike,
+  onToggleReplyLike,
+  commentLikeBusy,
+  replyLikeBusy,
 }: {
   comment: Comment;
   clientId: string;
@@ -960,10 +1105,16 @@ function CommentItem({
   isReplying: boolean;
   onToggleReply: () => void;
   replyBusy: boolean;
+  onToggleCommentLike: () => void;
+  onToggleReplyLike: (replyId: string) => void;
+  commentLikeBusy: boolean;
+  replyLikeBusy: (replyId: string) => boolean;
 }) {
   const [replyText, setReplyText] = useState("");
   const [replyName, setReplyName] = useState("");
   const replies = comment.replies || [];
+  const commentLiked = isLikedBy(comment.likedBy, clientId);
+  const commentLikeCount = (comment.likedBy || []).length;
 
   const submitReply = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1004,37 +1155,55 @@ function CommentItem({
         </p>
       )}
 
+      <LikeButton
+        count={commentLikeCount}
+        liked={commentLiked}
+        busy={commentLikeBusy}
+        onToggle={onToggleCommentLike}
+      />
+
       {replies.length > 0 && (
         <div className="mt-2 flex flex-col gap-1.5 pl-2 border-l border-white/5">
-          {replies.map((reply) => (
-            <div key={reply.replyId} className="flex flex-col gap-0.5">
-              <div className="flex justify-between items-start gap-2">
-                <span className="text-foreground text-[11px] font-medium opacity-80">
-                  {reply.requester}
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground text-[10px] opacity-40">{reply.time}</span>
-                  {reply.ownerId === clientId && (
-                    <button
-                      type="button"
-                      onClick={() => onDeleteReply(reply.replyId)}
-                      className="text-red-400/60 hover:text-red-400 flex items-center transition-colors"
-                      title={REPLY_DELETE_TITLE}
-                    >
-                      <Trash2 size={9} />
-                    </button>
-                  )}
+          {replies.map((reply) => {
+            const replyLiked = isLikedBy(reply.likedBy, clientId);
+            const replyLikeCount = (reply.likedBy || []).length;
+            return (
+              <div key={reply.replyId} className="flex flex-col gap-0.5">
+                <div className="flex justify-between items-start gap-2">
+                  <span className="text-foreground text-[11px] font-medium opacity-80">
+                    {reply.requester}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-[10px] opacity-40">{reply.time}</span>
+                    {reply.ownerId === clientId && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteReply(reply.replyId)}
+                        className="text-red-400/60 hover:text-red-400 flex items-center transition-colors"
+                        title={REPLY_DELETE_TITLE}
+                      >
+                        <Trash2 size={9} />
+                      </button>
+                    )}
+                  </div>
                 </div>
+                <p className="text-muted-foreground text-[11px] leading-relaxed opacity-75 break-words">
+                  {reply.note}
+                </p>
+                <LikeButton
+                  count={replyLikeCount}
+                  liked={replyLiked}
+                  busy={replyLikeBusy(reply.replyId)}
+                  onToggle={() => onToggleReplyLike(reply.replyId)}
+                  compact
+                />
               </div>
-              <p className="text-muted-foreground text-[11px] leading-relaxed opacity-75 break-words">
-                {reply.note}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      <div className="mt-1.5">
+      <div className="mt-1.5 flex items-center gap-3 flex-wrap">
         <button
           type="button"
           onClick={onToggleReply}
@@ -1088,5 +1257,41 @@ function CommentItem({
         </form>
       )}
     </div>
+  );
+}
+
+function LikeButton({
+  count,
+  liked,
+  busy,
+  onToggle,
+  compact,
+}: {
+  count: number;
+  liked: boolean;
+  busy: boolean;
+  onToggle: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={busy}
+      title={liked ? UNLIKE_TITLE : LIKE_TITLE}
+      className={`inline-flex items-center gap-1 transition-opacity hover:opacity-100 disabled:opacity-40 ${
+        compact ? "mt-0.5" : "mt-1"
+      } ${liked ? "opacity-90" : "opacity-50"}`}
+      style={{ color: liked ? "#FF9FD4" : "#6B6B8A" }}
+    >
+      <Heart
+        size={compact ? 9 : 10}
+        fill={liked ? "#FF9FD4" : "transparent"}
+        stroke={liked ? "#FF9FD4" : "currentColor"}
+      />
+      <span className="tabular-nums text-[10px]">
+        {count > 0 ? count : LIKE_BTN}
+      </span>
+    </button>
   );
 }
