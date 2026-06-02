@@ -1,5 +1,6 @@
 import { supabase } from "../supabaseClient";
 import { inferTimestampFromId } from "./commentTime";
+import { dedupeOwnerComments } from "./voteParticipation";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
 
 const TABLE = "kv_store_2914ec93";
@@ -46,10 +47,14 @@ function stamp<T extends Record<string, unknown>>(req: T): T {
 export function normalizeRequest(req: SongRequest): SongRequest {
   if (!req) return req;
   if (req.comments !== undefined) {
+    const comments = dedupeOwnerComments(
+      (req.comments || []).map(normalizeComment)
+    );
     return {
       ...req,
       updatedAt: req.updatedAt || req.createdAt || Date.now(),
-      comments: (req.comments || []).map(normalizeComment),
+      comments,
+      votes: comments.length,
     };
   }
   return {
@@ -275,11 +280,10 @@ export async function upsertTrackComment(body: {
       const ownerId = incoming.ownerId;
       if (ownerId) {
         const sameOwner = existing.comments.filter((c) => c.ownerId === ownerId);
-        const hasVote = sameOwner.some((c) => c.isVote === true);
-        const hasOther = sameOwner.some((c) => c.isVote !== true);
-        if (incoming.isVote && hasVote) throw new Error("你已经投过票了");
-        if (incoming.isVote && hasOther) throw new Error("你已留言，无法再单独投票");
-        if (!incoming.isVote && sameOwner.length > 0) {
+        if (sameOwner.length > 0) {
+          if (incoming.isVote) {
+            throw new Error("你已推荐或留言过这首歌，不能再投票");
+          }
           throw new Error("一个设备不能反复给一首歌评论或投票");
         }
       }

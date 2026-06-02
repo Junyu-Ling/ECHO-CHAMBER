@@ -6,7 +6,19 @@ import { supabase } from "../supabaseClient";
 import { deleteCommentViaApi, editCommentViaApi, fetchAllRequests, postRequestsBody } from "../lib/requestsApi";
 import { normalizeRequest } from "../lib/requestsStore";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
-import { VOTE_NOTE, VOTE_REQUESTER, VOTE_ADD_TITLE, VOTE_CANCEL_TITLE } from "../copy/voteCopy";
+import {
+  VOTE_NOTE,
+  VOTE_REQUESTER,
+  VOTE_ADD_TITLE,
+  VOTE_ALREADY_PARTICIPATED,
+  VOTE_CANCEL_TITLE,
+  VOTE_PARTICIPATED_TITLE,
+} from "../copy/voteCopy";
+import {
+  findMyVoteComment,
+  hasParticipatedOnTrack,
+  isVoteComment,
+} from "../lib/voteParticipation";
 import {
   REPLY_BTN,
   REPLY_CANCEL,
@@ -108,21 +120,12 @@ function applyTrackFromRemote(prev: SongRequest[], remote: SongRequest) {
   return next;
 }
 
-function isVoteComment(c: Comment) {
-  return (
-    c.isVote === true ||
-    (c.note === VOTE_NOTE && c.requester === VOTE_REQUESTER)
-  );
-}
-
-function collectVotedIds(list: SongRequest[], clientId: string) {
-  const voted = new Set<number>();
+function collectParticipatedIds(list: SongRequest[], clientId: string) {
+  const ids = new Set<number>();
   for (const r of list) {
-    if (r.comments?.some((c) => c.ownerId === clientId && isVoteComment(c))) {
-      voted.add(r.id);
-    }
+    if (hasParticipatedOnTrack(r.comments, clientId)) ids.add(r.id);
   }
-  return voted;
+  return ids;
 }
 
 type SortMode = "hot" | "new";
@@ -169,7 +172,7 @@ export function SongRequestSection() {
 
   useEffect(() => {
     if (!clientId) return;
-    setLocalVotedIds(collectVotedIds(requests, clientId));
+    setLocalVotedIds(collectParticipatedIds(requests, clientId));
   }, [requests, clientId]);
 
   useEffect(() => {
@@ -582,16 +585,16 @@ export function SongRequestSection() {
     const existingReq = requests.find((r) => r.id === id);
     if (!existingReq) return;
 
-    const myVote = existingReq.comments.find(
-      (c) => c.ownerId === clientId && isVoteComment(c)
-    );
-    const hasVoted = localVotedIds.has(id) || !!myVote;
+    const myVote = findMyVoteComment(existingReq.comments, clientId);
+    const hasParticipated =
+      localVotedIds.has(id) ||
+      hasParticipatedOnTrack(existingReq.comments, clientId);
 
     setVotingIds((prev) => new Set(prev).add(id));
     beginMutation();
 
     try {
-      if (hasVoted && myVote) {
+      if (hasParticipated && myVote) {
         const voteSnapshot = requests;
         applyCommentRemoval(id, myVote.commentId);
         try {
@@ -603,7 +606,10 @@ export function SongRequestSection() {
         return;
       }
 
-      if (hasVoted) return;
+      if (hasParticipated) {
+        alert(VOTE_ALREADY_PARTICIPATED);
+        return;
+      }
 
       const newComment: Comment = stampCommentFields({
         commentId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -664,12 +670,14 @@ export function SongRequestSection() {
       return;
     }
 
+    const noteTrim = noteInput.trim();
     const newComment: Comment = stampCommentFields({
       commentId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      note: noteInput.trim() || VOTE_NOTE,
+      note: noteTrim || VOTE_NOTE,
       requester: nameInput.trim() || VOTE_REQUESTER,
       ownerId: clientId,
-      isVote: false,
+      /** 仅点歌、无自定义留言文案时视为「推荐投票」 */
+      isVote: !noteTrim,
       replies: [],
       likedBy: [],
     });
@@ -908,7 +916,7 @@ export function SongRequestSection() {
                   .map((req, index) => (
                   <RequestCard
                     key={req.id}
-                    request={{ ...req, hasVoted: localVotedIds.has(req.id) }}
+                    request={req}
                     rank={sortMode === "hot" ? index + 1 : undefined}
                     maxVotes={maxVotes}
                     onVote={() => handleVote(req.id)}
@@ -1059,6 +1067,14 @@ function RequestCard({
   voteBusy?: boolean;
 }) {
   const pct = Math.round((request.votes / maxVotes) * 100);
+  const hasParticipated = hasParticipatedOnTrack(request.comments, clientId);
+  const myVote = findMyVoteComment(request.comments, clientId);
+  const voteHighlight = hasParticipated;
+  const voteTitle = myVote
+    ? VOTE_CANCEL_TITLE
+    : hasParticipated
+      ? VOTE_PARTICIPATED_TITLE
+      : VOTE_ADD_TITLE;
 
   return (
     <div
@@ -1128,24 +1144,24 @@ function RequestCard({
         <button
           type="button"
           onClick={onVote}
-          disabled={voteBusy}
+          disabled={voteBusy || (hasParticipated && !myVote)}
           className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 transition-all duration-150 hover:opacity-80 disabled:opacity-40"
           style={{
-            border: request.hasVoted ? "1px solid rgba(255,159,212,0.5)" : "1px solid rgba(255,255,255,0.08)",
-            background: request.hasVoted ? "rgba(255,159,212,0.08)" : "transparent",
+            border: voteHighlight ? "1px solid rgba(255,159,212,0.5)" : "1px solid rgba(255,255,255,0.08)",
+            background: voteHighlight ? "rgba(255,159,212,0.08)" : "transparent",
             minWidth: 44,
-            cursor: voteBusy ? "wait" : "pointer",
+            cursor: voteBusy || (hasParticipated && !myVote) ? "not-allowed" : "pointer",
           }}
-          title={request.hasVoted ? VOTE_CANCEL_TITLE : VOTE_ADD_TITLE}
+          title={voteTitle}
         >
           <ChevronUp
             size={13}
-            style={{ color: request.hasVoted ? "#FF9FD4" : "#6B6B8A" }}
+            style={{ color: voteHighlight ? "#FF9FD4" : "#6B6B8A" }}
           />
           <span
             className="text-xs tabular-nums"
             style={{
-              color: request.hasVoted ? "#FF9FD4" : "#6B6B8A",
+              color: voteHighlight ? "#FF9FD4" : "#6B6B8A",
               fontFamily: "'Anton', sans-serif",
               letterSpacing: "0.05em",
             }}

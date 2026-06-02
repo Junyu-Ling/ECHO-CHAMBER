@@ -10,6 +10,7 @@
     "sync:github": "node scripts/git-sync.mjs",
     "media:generate": "node scripts/generate-media.mjs",
     "sync:edge": "node scripts/sync-edge-function.mjs",
+    "fix:duplicate-votes": "node scripts/fix-duplicate-votes.mjs",
     "deploy:edge": "node scripts/sync-edge-function.mjs && node scripts/deploy-edge.mjs",
     "db:kv-policies": "node scripts/apply-kv-policies.mjs"
   },

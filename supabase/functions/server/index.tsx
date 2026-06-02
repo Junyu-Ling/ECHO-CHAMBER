@@ -69,13 +69,48 @@ function stampReq(req: any) {
   return req;
 }
 
+function commentSortKey(c: any) {
+  if (typeof c.createdAt === "number" && c.createdAt > 0) return c.createdAt;
+  return inferTimestampFromId(c.commentId) ?? 0;
+}
+
+/** 同一 ownerId 仅保留一条：优先留言，否则最早投票 */
+function dedupeOwnerComments(comments: any[]) {
+  const withoutOwner = comments.filter((c) => !c.ownerId);
+  const byOwner = new Map<string, any[]>();
+  for (const c of comments) {
+    if (!c.ownerId) continue;
+    const list = byOwner.get(c.ownerId) || [];
+    list.push(c);
+    byOwner.set(c.ownerId, list);
+  }
+  const kept: any[] = [...withoutOwner];
+  for (const list of byOwner.values()) {
+    if (list.length === 1) {
+      kept.push(list[0]);
+      continue;
+    }
+    const messages = list.filter((c) => c.isVote !== true);
+    if (messages.length > 0) {
+      messages.sort((a, b) => commentSortKey(a) - commentSortKey(b));
+      kept.push(messages[0]);
+      continue;
+    }
+    const votes = [...list].sort((a, b) => commentSortKey(a) - commentSortKey(b));
+    kept.push(votes[0]);
+  }
+  return kept.sort((a, b) => commentSortKey(b) - commentSortKey(a));
+}
+
 function normalizeRequest(req: any) {
   if (!req) return req;
   if (req.comments !== undefined) {
+    const comments = dedupeOwnerComments((req.comments || []).map(normalizeComment));
     return {
       ...req,
       updatedAt: req.updatedAt || req.createdAt || Date.now(),
-      comments: (req.comments || []).map(normalizeComment),
+      comments,
+      votes: comments.length,
     };
   }
   return {
@@ -420,15 +455,10 @@ app.post("/make-server-2914ec93/requests", async (c) => {
         const ownerId = incoming.ownerId;
         if (ownerId) {
           const sameOwner = existing.comments.filter((cmt: any) => cmt.ownerId === ownerId);
-          const hasVote = sameOwner.some((cmt: any) => cmt.isVote === true);
-          const hasOther = sameOwner.some((cmt: any) => cmt.isVote !== true);
-          if (incoming.isVote && hasVote) {
-            return c.json({ success: false, error: "你已经投过票了" }, 400);
-          }
-          if (incoming.isVote && hasOther) {
-            return c.json({ success: false, error: "你已留言，无法再单独投票" }, 400);
-          }
-          if (!incoming.isVote && sameOwner.length > 0) {
+          if (sameOwner.length > 0) {
+            if (incoming.isVote) {
+              return c.json({ success: false, error: "你已推荐或留言过这首歌，不能再投票" }, 400);
+            }
             return c.json({ success: false, error: "一个设备不能反复给一首歌评论或投票" }, 400);
           }
         }
