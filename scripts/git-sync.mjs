@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Stage, commit (if needed), and push to origin/ECHO-CHAMBER.
- * Set GITHUB_REPO once via scripts/setup-github-remote.ps1
+ * Stage, commit (if needed), push to origin/ECHO-CHAMBER and sync main.
  */
 import { execSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -9,10 +8,29 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const BRANCH = "ECHO-CHAMBER";
+const SYNC_MAIN = "main";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+const gitEnv = {
+  ...process.env,
+  GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME || "LingJ",
+  GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL || "noreply@local",
+  GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME || process.env.GIT_AUTHOR_NAME || "LingJ",
+  GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL || process.env.GIT_AUTHOR_EMAIL || "noreply@local",
+};
+
 function run(cmd, opts = {}) {
-  return execSync(cmd, { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], ...opts }).trim();
+  return execSync(cmd, {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"],
+    env: gitEnv,
+    ...opts,
+  }).trim();
+}
+
+function git(args) {
+  return spawnSync("git", args, { cwd: root, encoding: "utf8", env: gitEnv });
 }
 
 function hasRemote() {
@@ -24,14 +42,14 @@ function hasRemote() {
   }
 }
 
-if (!existsSync(`${root}/.git`)) {
-  console.error("[git-sync] Not a git repository. Run: git init");
+if (!existsSync(join(root, ".git"))) {
+  console.error("[git-sync] Not a git repository.");
   process.exit(1);
 }
 
 if (!hasRemote()) {
   console.error(
-    "[git-sync] No origin remote. Run once:\n  powershell -File scripts/setup-github-remote.ps1 -RepoUrl https://github.com/YOU/REPO.git"
+    "[git-sync] No origin. Run:\n  powershell -File scripts/setup-github-remote.ps1 -RepoUrl https://github.com/Miyeon-0131/ECHO-CHAMBER.git"
   );
   process.exit(1);
 }
@@ -42,38 +60,36 @@ try {
   run(`git checkout -b ${BRANCH}`);
 }
 
-const current = run("git branch --show-current");
-if (current !== BRANCH) {
+if (run("git branch --show-current") !== BRANCH) {
   run(`git checkout ${BRANCH}`);
 }
 
 const status = run("git status --porcelain");
-if (!status) {
-  console.log("[git-sync] Working tree clean — nothing to push.");
-  try {
-    run(`git push origin ${BRANCH}`);
-    console.log("[git-sync] Push OK (up to date).");
-  } catch (e) {
-    console.error(String(e.stderr || e.message));
-    process.exit(1);
+if (status) {
+  run("git add -A");
+  const msg =
+    process.env.GIT_SYNC_MESSAGE ||
+    `sync: ${new Date().toISOString().replace("T", " ").slice(0, 19)}`;
+  const commit = git(["commit", "-m", msg]);
+  if (commit.status !== 0) {
+    const out = `${commit.stderr || ""}${commit.stdout || ""}`.trim();
+    if (!out.includes("nothing to commit")) {
+      console.error("[git-sync] Commit failed:\n", out);
+      process.exit(commit.status ?? 1);
+    }
+  } else {
+    console.log(`[git-sync] Committed: ${msg}`);
   }
-  process.exit(0);
+} else {
+  console.log("[git-sync] Working tree clean.");
 }
 
-run("git add -A");
-const msg =
-  process.env.GIT_SYNC_MESSAGE ||
-  `sync: ${new Date().toISOString().replace("T", " ").slice(0, 19)}`;
-const commit = spawnSync("git", ["commit", "-m", msg], { cwd: root, encoding: "utf8" });
-if (commit.status !== 0) {
-  console.error(commit.stderr || commit.stdout);
-  process.exit(commit.status ?? 1);
+for (const ref of [BRANCH, `${BRANCH}:${SYNC_MAIN}`]) {
+  const push = git(["push", "-u", "origin", ref]);
+  if (push.status !== 0) {
+    console.error(`[git-sync] Push failed (origin ${ref}):\n`, push.stderr || push.stdout);
+    process.exit(push.status ?? 1);
+  }
 }
 
-const push = spawnSync("git", ["push", "-u", "origin", BRANCH], { cwd: root, encoding: "utf8" });
-if (push.status !== 0) {
-  console.error(push.stderr || push.stdout);
-  process.exit(push.status ?? 1);
-}
-
-console.log(`[git-sync] Committed and pushed to origin/${BRANCH}`);
+console.log(`[git-sync] Pushed to origin/${BRANCH} and origin/${SYNC_MAIN}`);
