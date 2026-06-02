@@ -4,8 +4,8 @@ import nancyPhoto from "../../imports/lQLPKdR7pV4uPB_NAmbNAbuwfOwc6P3wB3IJ8mfbtW
 import maikePhoto from "../../imports/25DC9DC1-439E-4229-AAD5-1B6E8BCA7B10.png";
 import alexanderPhoto from "../../imports/ad81c106b9718346d60bf647dce4c108.jpg";
 import mikePhoto from "../../imports/bcc1145200430316445221f235a19070.jpg";
-import richardPhoto from "../../imports/member-richard.png";
-import shenXinyuPhoto from "../../imports/member-shen-xinyu.png";
+import richardPhoto from "../../assets/members/richard.webp";
+import shenXinyuPhoto from "../../assets/members/shen-xinyu.webp";
 import { ImageWithFallback } from "./ImageWithFallback";
 
 const members = [

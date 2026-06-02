@@ -28,4 +28,20 @@ for (const id of [1, 2, 3]) {
     .toFile(path.join(postersDir, `video-${id}.webp`));
 }
 
-console.log("Generated hero.webp, hero-placeholder.webp, posters/video-*.webp");
+const membersDir = path.join(assetsDir, "members");
+const importsDir = path.join(root, "src/imports");
+await mkdir(membersDir, { recursive: true });
+
+const memberSources = [
+  ["member-shen-xinyu.png", "shen-xinyu.webp"],
+  ["member-richard.png", "richard.webp"],
+];
+
+for (const [input, output] of memberSources) {
+  await sharp(path.join(importsDir, input))
+    .resize(800, 1067, { fit: "cover", position: "centre" })
+    .webp({ quality: 85 })
+    .toFile(path.join(membersDir, output));
+}
+
+console.log("Generated hero, posters, and member webp assets");
