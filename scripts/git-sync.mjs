@@ -12,7 +12,7 @@ const SYNC_MAIN = "main";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const DEFAULT_GIT_NAME = "LingJ";
-const DEFAULT_GIT_EMAIL = "LIngJunYu20081201@gmail.com";
+const DEFAULT_GIT_EMAIL = "LingJunYu20081201@gmail.com";
 
 const gitEnv = {
   ...process.env,
