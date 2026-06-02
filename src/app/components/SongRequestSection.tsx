@@ -71,17 +71,23 @@ function getTrackTimestamp(req: SongRequest) {
   return req.updatedAt ?? req.createdAt ?? 0;
 }
 
-/** Prefer newer server data; never let stale poll/realtime overwrite a successful local edit. */
+/** Prefer newer server data; keep optimistic new tracks until server list includes them. */
 function mergeRequestsList(prev: SongRequest[], incoming: SongRequest[]) {
   const prevById = new Map(prev.map((r) => [r.id, r]));
-  return incoming.map((remote) => {
+  const incomingIds = new Set<number>();
+
+  const merged = incoming.map((remote) => {
     const normalized = normalizeRequest(remote);
+    incomingIds.add(normalized.id);
     const local = prevById.get(normalized.id);
     if (!local) return normalized;
     return getTrackTimestamp(normalized) >= getTrackTimestamp(local)
       ? normalized
       : local;
   });
+
+  const localOnly = prev.filter((r) => !incomingIds.has(r.id));
+  return [...localOnly, ...merged];
 }
 
 function applyTrackFromRemote(prev: SongRequest[], remote: SongRequest) {
@@ -687,6 +693,7 @@ export function SongRequestSection() {
           if (r.id === trackId) {
             return {
               ...r,
+              updatedAt: Date.now(),
               votes: r.votes + 1,
               comments: [...commentsToSubmit, ...r.comments],
             };
@@ -697,13 +704,12 @@ export function SongRequestSection() {
         return [{
           ...payload,
           createdAt: Date.now(),
+          updatedAt: Date.now(),
           votes: 1,
         }, ...prev];
       }
     });
 
-    setLocalVotedIds((prev) => new Set(prev).add(trackId));
-    
     setSearchValue("");
     setSelectedTrack(null);
     setNoteInput("");
@@ -721,9 +727,8 @@ export function SongRequestSection() {
     } catch (err) {
       console.error("Error submitting request:", err);
       const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("\u53cd\u590d") || msg.includes("\u7559\u8a00")) {
-        alert(msg);
-      }
+      alert(msg || "提交失败，请稍后重试");
+      setSubmitted(false);
       setRequests(submitSnapshot);
     } finally {
       endMutation();
