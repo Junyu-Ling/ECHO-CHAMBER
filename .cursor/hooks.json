@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": "node scripts/git-sync.mjs",
+        "timeout": 120
+      }
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Auto-push to GitHub after each local commit (ECHO-CHAMBER branch).
+branch=$(git branch --show-current)
+if [ "$branch" = "ECHO-CHAMBER" ] && git remote get-url origin >/dev/null 2>&1; then
+  git push origin ECHO-CHAMBER
+fi
