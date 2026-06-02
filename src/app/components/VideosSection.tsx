@@ -5,10 +5,12 @@ import { VideoThumbnail } from "./VideoThumbnail";
 import { SectionHeader } from "./SectionHeader";
 import { videoMeta, sectionLabel, dateVenueSep } from "../copy/videoMeta";
 import { videoSources } from "../copy/videoUrls";
+import { videoPosters } from "../copy/videoPosters";
 
 const videos = videoMeta.map((v) => ({
   ...v,
   videoUrl: videoSources[v.id],
+  poster: videoPosters[v.id],
 }));
 
 export function VideosSection() {
@@ -20,8 +22,13 @@ export function VideosSection() {
         <SectionHeader label={sectionLabel} title="LIVE ARCHIVE" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-14">
-          {videos.map((video) => (
-            <VideoCard key={video.id} video={video} onClick={() => setSelected(video)} />
+          {videos.map((video, index) => (
+            <VideoCard
+              key={video.id}
+              video={video}
+              priority={index === 0}
+              onClick={() => setSelected(video)}
+            />
           ))}
         </div>
       </div>
@@ -35,9 +42,11 @@ export function VideosSection() {
 
 function VideoCard({
   video,
+  priority,
   onClick,
 }: {
   video: (typeof videos)[number];
+  priority?: boolean;
   onClick: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -52,9 +61,9 @@ function VideoCard({
     >
       <VideoThumbnail
         videoId={video.id}
-        videoUrl={video.videoUrl}
         newest={video.newest}
         hovered={hovered}
+        priority={priority}
       />
 
       <div className="p-4">

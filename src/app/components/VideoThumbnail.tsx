@@ -1,50 +1,27 @@
-import { useState } from "react";
 import { Play } from "lucide-react";
-import { useInView } from "../hooks/useInView";
 import { videoPosters } from "../copy/videoPosters";
 
 type VideoThumbnailProps = {
   videoId: number;
-  videoUrl: string;
   newest: boolean;
   hovered: boolean;
+  priority?: boolean;
 };
 
-export function VideoThumbnail({ videoId, videoUrl, newest, hovered }: VideoThumbnailProps) {
-  const { ref, inView } = useInView<HTMLDivElement>({ rootMargin: "280px 0px" });
-  const [frameReady, setFrameReady] = useState(false);
+export function VideoThumbnail({ videoId, newest, hovered, priority }: VideoThumbnailProps) {
   const poster = videoPosters[videoId];
 
   return (
-    <div ref={ref} className="relative overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
+    <div className="relative overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
       <img
         src={poster}
         alt=""
         className="absolute inset-0 w-full h-full object-cover transition-transform duration-500"
-        style={{
-          transform: hovered ? "scale(1.06)" : "scale(1)",
-          opacity: frameReady ? 0 : 1,
-          transition: "opacity 0.3s ease, transform 0.5s ease",
-        }}
+        style={{ transform: hovered ? "scale(1.06)" : "scale(1)" }}
         decoding="async"
-        loading="lazy"
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "auto"}
       />
-
-      {inView && (
-        <video
-          src={`${videoUrl}#t=0.001`}
-          poster={poster}
-          className="absolute inset-0 w-full h-full object-cover transition-transform duration-500"
-          style={{
-            transform: hovered ? "scale(1.06)" : "scale(1)",
-            opacity: frameReady ? 1 : 0,
-          }}
-          muted
-          playsInline
-          preload="metadata"
-          onLoadedData={() => setFrameReady(true)}
-        />
-      )}
 
       <div
         className="absolute inset-0 transition-opacity duration-300 pointer-events-none"
