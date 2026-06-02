@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2, Reply, Heart } from "lucide-react";
+import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2, Reply as ReplyIcon, Heart } from "lucide-react";
 import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
 import { supabase } from "../supabaseClient";
@@ -1233,7 +1233,7 @@ function CommentItem({
           className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider transition-colors hover:opacity-100 opacity-60"
           style={{ color: "#FF9FD4" }}
         >
-          <Reply size={10} />
+          <ReplyIcon size={10} />
           {REPLY_BTN}
           {replies.length > 0 && (
             <span className="opacity-70">({replies.length})</span>
