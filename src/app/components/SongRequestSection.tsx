@@ -27,6 +27,7 @@ import {
   stampCommentFields,
   stampReplyFields,
 } from "../lib/commentTime";
+import { stopPreviewIf, subscribePreview, togglePreview } from "../lib/previewAudio";
 
 // requestsApiBase + getAuthHeaders from ../lib/requestsApi
 
@@ -869,31 +870,17 @@ export function SongRequestSection() {
 
 function PreviewButton({ previewUrl }: { previewUrl: string }) {
   const [playing, setPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    return () => {
-      audioRef.current?.pause();
-    };
-  }, []);
+    return subscribePreview((active) => setPlaying(active === previewUrl));
+  }, [previewUrl]);
+
+  useEffect(() => () => stopPreviewIf(previewUrl), [previewUrl]);
 
   const toggle = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!audioRef.current) {
-      audioRef.current = new Audio(previewUrl);
-      audioRef.current.onended = () => setPlaying(false);
-    }
-    if (playing) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setPlaying(false);
-    } else {
-      const promise = audioRef.current.play();
-      if (promise !== undefined) {
-        promise.then(() => setPlaying(true)).catch(() => {});
-      }
-    }
+    togglePreview(previewUrl);
   };
 
   return (
