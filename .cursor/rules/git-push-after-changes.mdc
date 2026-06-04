@@ -1,0 +1,16 @@
+---
+description: 每次完成代码改动后自动提交并推送到 GitHub
+alwaysApply: true
+---
+
+# 改动后推送到 GitHub
+
+完成本仓库内的功能修复、UI 调整、资源更新等**任何实质性改动**后，在收尾前必须：
+
+1. 确认 `git status` 有变更则提交（勿提交 `.env`、密钥等敏感文件）
+2. 运行 `pnpm sync:github`（或 `node scripts/git-sync.mjs`），推送到 `origin/ECHO-CHAMBER` 并同步 `origin/main`
+3. 可用 `GIT_SYNC_MESSAGE` 环境变量写清本次改动的中文说明，例如：`feat: 留言默认折叠`
+
+工作区已干净、且用户仅询问未改代码时，不必空提交。
+
+若 push 失败，向用户说明原因并给出修复步骤，不要假装已推送。
