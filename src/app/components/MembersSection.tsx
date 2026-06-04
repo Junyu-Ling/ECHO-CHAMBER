@@ -9,6 +9,7 @@ import mikePhoto from "../../imports/bcc1145200430316445221f235a19070.jpg";
 import richardPhoto from "../../assets/members/richard.webp";
 import shenXinyuPhoto from "../../assets/members/shen-xinyu.webp";
 import ellisPhoto from "../../assets/members/ellis.webp";
+import gongLaoshiPhoto from "../../assets/members/gong-laoshi.webp";
 import { ImageWithFallback } from "./ImageWithFallback";
 
 const members = [
@@ -19,7 +20,7 @@ const members = [
     role: "指导老师",
     roleEn: "指导老师",
     bio: "乐队的灵魂导师和坚实后盾，见证每一次从排练室到舞台的蜕变",
-    photo: "https://images.unsplash.com/photo-1544168190-79c17527004f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMG1hbGUlMjB0ZWFjaGVyJTIwYWR1bHR8ZW58MXx8fHwxNzgwMzEzODA2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+    photo: gongLaoshiPhoto,
     isLeader: true,
   },
   {
