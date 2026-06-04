@@ -3,6 +3,7 @@ import kimPhoto from "../../imports/71f668c2a7fba05551d1d606f7d8071d.jpg";
 import nancyPhoto from "../../imports/lQLPKdR7pV4uPB_NAmbNAbuwfOwc6P3wB3IJ8mfbtWyQAA_443_614.png";
 import baiQianhePhoto from "../../assets/members/bai-qianhe.webp";
 import guChenyangPhoto from "../../assets/members/gu-chenyang.webp";
+import huangZiyiPhoto from "../../assets/members/huang-ziyi.webp";
 import alexanderPhoto from "../../imports/ad81c106b9718346d60bf647dce4c108.jpg";
 import mikePhoto from "../../imports/bcc1145200430316445221f235a19070.jpg";
 import richardPhoto from "../../assets/members/richard.webp";
@@ -127,7 +128,7 @@ const members = [
     role: "主唱",
     roleEn: "中国部 G10C1",
     bio: "声音极具穿透力与爆发感，舞台中央闪耀的绝对核心",
-    photo: "https://images.unsplash.com/flagged/photo-1561440064-26f554ab03a5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjaGluZXNlJTIwZmVtYWxlJTIwc2luZ2VyJTIwc3RhZ2V8ZW58MXx8fHwxNzgwMzE0MzcyfDA&ixlib=rb-4.1.0&q=80&w=1080",
+    photo: huangZiyiPhoto,
   }
 ];
 

@@ -89,6 +89,7 @@ const memberSources = [
   ["ellis.png", "ellis.webp"],
   ["bai-qianhe.png", "bai-qianhe.webp"],
   ["gu-chenyang.png", "gu-chenyang.webp"],
+  ["huang-ziyi.png", "huang-ziyi.webp"],
 ];
 
 for (const [input, output] of memberSources) {
