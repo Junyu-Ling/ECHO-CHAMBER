@@ -249,6 +249,7 @@ const memberSources = [
   ["bai-qianhe.png", "bai-qianhe.webp", { position: "top", maxUpscale: 1.65 }],
   ["gu-chenyang.png", "gu-chenyang.webp", {}],
   ["huang-ziyi.png", "huang-ziyi.webp", { position: "attention", maxUpscale: 2.2 }],
+  ["liu-yiyang.png", "liu-yiyang.webp", { position: "centre", maxUpscale: 2.2 }],
 ];
 
 for (const [input, output, opts] of memberSources) {

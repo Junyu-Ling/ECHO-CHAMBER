@@ -10,6 +10,7 @@ import richardPhoto from "../../assets/members/richard.webp";
 import shenXinyuPhoto from "../../assets/members/shen-xinyu.webp";
 import ellisPhoto from "../../assets/members/ellis.webp";
 import gongLaoshiPhoto from "../../assets/members/gong-laoshi.webp";
+import liuYiyangPhoto from "../../assets/members/liu-yiyang.webp";
 import { ImageWithFallback } from "./ImageWithFallback";
 
 const members = [
@@ -39,7 +40,8 @@ const members = [
     role: "电吉他手 / 鼓手",
     roleEn: "中国部 G11C2",
     bio: "鼓手兼电吉他手 想要练就极致的 riff 和犹如节拍器一样的节奏",
-    photo: "https://images.unsplash.com/photo-1619612833026-d7ce3c1023d2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMHlvdW5nJTIwbWFsZSUyMGd1aXRhcmlzdHxlbnwxfHx8fDE3ODAzMTM4MDV8MA&ixlib=rb-4.1.0&q=80&w=1080",
+    photo: liuYiyangPhoto,
+    photoPosition: "center 40%",
   },
   {
     id: 3,
