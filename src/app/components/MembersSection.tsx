@@ -22,6 +22,7 @@ const members = [
     roleEn: "指导老师",
     bio: "乐队的灵魂导师和坚实后盾，见证每一次从排练室到舞台的蜕变",
     photo: gongLaoshiPhoto,
+    photoPosition: "center 32%",
     isLeader: true,
   },
   {
