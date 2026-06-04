@@ -160,6 +160,16 @@ export async function addReply(trackId, commentId, reply) {
   return { success: true, data: normalizeRequest(reqData) };
 }
 
+function assertOwnerOrAssign(record, ownerId) {
+  if (!record.ownerId) {
+    record.ownerId = ownerId;
+    return;
+  }
+  if (record.ownerId !== ownerId) {
+    throw Object.assign(new Error("Unauthorized or not found"), { status: 403 });
+  }
+}
+
 export async function editReply(trackId, commentId, replyId, ownerId, patch) {
   const note = (patch.note || "").trim();
   const requester = (patch.requester || "").trim() || "匿名";
@@ -175,7 +185,9 @@ export async function editReply(trackId, commentId, replyId, ownerId, patch) {
   if (rIdx < 0) throw Object.assign(new Error("Reply not found"), { status: 404 });
 
   const reply = normalizeReply(comment.replies[rIdx]);
-  if (reply.ownerId !== ownerId) {
+  try {
+    assertOwnerOrAssign(reply, ownerId);
+  } catch {
     throw Object.assign(new Error("Unauthorized or reply not found"), { status: 403 });
   }
   const m = /^(\d{10,13})/.exec(reply.replyId || "");
@@ -250,7 +262,9 @@ export async function editComment(trackId, commentId, ownerId, patch) {
   if (idx < 0) throw Object.assign(new Error("Comment not found"), { status: 404 });
 
   const comment = normalizeComment(reqData.comments[idx]);
-  if (comment.ownerId !== ownerId) {
+  try {
+    assertOwnerOrAssign(comment, ownerId);
+  } catch {
     throw Object.assign(new Error("Unauthorized or comment not found"), { status: 403 });
   }
   const wasVote =

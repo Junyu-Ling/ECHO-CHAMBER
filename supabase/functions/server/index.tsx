@@ -265,7 +265,8 @@ async function editReplyInStore(
   if (rIdx < 0) throw new Error("Reply not found");
 
   const reply = normalizeReply(comment.replies[rIdx]);
-  if (reply.ownerId !== ownerId) {
+  if (!reply.ownerId) reply.ownerId = ownerId;
+  else if (reply.ownerId !== ownerId) {
     throw new Error("Unauthorized or reply not found");
   }
   const createdAt = reply.createdAt || inferTimestampFromId(reply.replyId) || Date.now();
@@ -327,7 +328,8 @@ async function editCommentInStore(
   if (idx < 0) throw new Error("Comment not found");
 
   const comment = normalizeComment(reqData.comments[idx]);
-  if (comment.ownerId !== ownerId) {
+  if (!comment.ownerId) comment.ownerId = ownerId;
+  else if (comment.ownerId !== ownerId) {
     throw new Error("Unauthorized or comment not found");
   }
   const wasVote =

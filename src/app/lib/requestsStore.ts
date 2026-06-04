@@ -6,6 +6,7 @@ import {
   stampCommentEdit,
   stampReplyEdit,
 } from "./commentTime";
+import { assertOwnerOrAssign } from "./ownerAuth";
 import { dedupeOwnerComments, isVoteComment } from "./voteParticipation";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
 
@@ -213,9 +214,9 @@ export async function updateReplyInDb(
   const rIdx = (comment.replies || []).findIndex((r) => r.replyId === replyId);
   if (rIdx < 0) throw new Error("Reply not found");
   const reply = normalizeReply(comment.replies![rIdx]);
-  if (!reply.ownerId) {
-    reply.ownerId = ownerId;
-  } else if (reply.ownerId !== ownerId) {
+  try {
+    assertOwnerOrAssign(reply, ownerId);
+  } catch {
     throw new Error("Unauthorized or reply not found");
   }
   const createdAt = reply.createdAt || inferTimestampFromId(reply.replyId) || Date.now();
@@ -270,9 +271,9 @@ export async function updateCommentInDb(
   const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
   if (idx < 0) throw new Error("Comment not found");
   const comment = normalizeComment(reqData.comments[idx] as Comment);
-  if (!comment.ownerId) {
-    comment.ownerId = ownerId;
-  } else if (comment.ownerId !== ownerId) {
+  try {
+    assertOwnerOrAssign(comment, ownerId);
+  } catch {
     throw new Error("Unauthorized or comment not found");
   }
   const wasVote = comment.isVote === true || isVoteComment(comment);

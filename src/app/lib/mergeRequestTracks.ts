@@ -11,8 +11,12 @@ export type PendingCommentEdit = {
 
 export type PendingEditsMap = Map<string, PendingCommentEdit>;
 
-function pendingKey(trackId: number, commentId: string) {
+function pendingCommentKey(trackId: number, commentId: string) {
   return `${trackId}:${commentId}`;
+}
+
+function pendingReplyKey(trackId: number, commentId: string, replyId: string) {
+  return `${trackId}:${commentId}:${replyId}`;
 }
 
 function replyRevision(r: Reply) {
@@ -31,15 +35,30 @@ export function applyPendingCommentEdits(
   if (!pending?.size) return track;
   let changed = false;
   const comments = track.comments.map((c) => {
-    const p = pending.get(pendingKey(track.id, c.commentId));
-    if (!p) return c;
-    changed = true;
-    return {
-      ...c,
-      note: p.note,
-      requester: p.requester,
-      updatedAt: Math.max(p.updatedAt, c.updatedAt ?? 0),
-    };
+    const p = pending.get(pendingCommentKey(track.id, c.commentId));
+    let next = c;
+    if (p) {
+      changed = true;
+      next = {
+        ...c,
+        note: p.note,
+        requester: p.requester,
+        updatedAt: Math.max(p.updatedAt, c.updatedAt ?? 0),
+      };
+    }
+    const replies = (next.replies || []).map((r) => {
+      const pr = pending.get(pendingReplyKey(track.id, c.commentId, r.replyId));
+      if (!pr) return r;
+      changed = true;
+      return {
+        ...r,
+        note: pr.note,
+        requester: pr.requester,
+        updatedAt: Math.max(pr.updatedAt, r.updatedAt ?? 0),
+      };
+    });
+    if (replies !== next.replies) next = { ...next, replies };
+    return next;
   });
   return changed ? { ...track, comments } : track;
 }
@@ -77,13 +96,7 @@ function mergeComments(local: Comment[], remote: Comment[]): Comment[] {
     else {
       const useLocal = commentRevision(l) >= commentRevision(r);
       const primary = useLocal ? { ...l } : { ...r };
-      const secondary = useLocal ? r : l;
       primary.replies = mergeReplies(l.replies || [], r.replies || []);
-      if ((primary.likedBy || []).length !== (secondary.likedBy || []).length) {
-        const pLen = (primary.likedBy || []).length;
-        const sLen = (secondary.likedBy || []).length;
-        if (sLen > pLen) primary.likedBy = secondary.likedBy;
-      }
       merged.push(primary);
     }
   }

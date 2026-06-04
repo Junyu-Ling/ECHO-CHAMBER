@@ -53,7 +53,6 @@ import {
 import {
   applyTrackFromRemote,
   mergeRequestsList,
-  mergeTrack,
   type PendingCommentEdit,
 } from "../lib/mergeRequestTracks";
 import { stopPreviewIf, subscribePreview, togglePreview } from "../lib/previewAudio";
@@ -96,14 +95,6 @@ function normalizeRequestsList(list: SongRequest[]) {
   return list.map(normalizeRequest);
 }
 
-function collectParticipatedIds(list: SongRequest[], clientId: string) {
-  const ids = new Set<number>();
-  for (const r of list) {
-    if (hasParticipatedOnTrack(r.comments, clientId)) ids.add(r.id);
-  }
-  return ids;
-}
-
 type SortMode = "hot" | "new";
 
 export function SongRequestSection() {
@@ -116,7 +107,6 @@ export function SongRequestSection() {
   const [noteInput, setNoteInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [submitted, setSubmitted] = useState(false);
-  const [localVotedIds, setLocalVotedIds] = useState<Set<number>>(new Set());
   const [replyingKey, setReplyingKey] = useState<string | null>(null);
   const [submittingReplyKey, setSubmittingReplyKey] = useState<string | null>(null);
   const voteInFlightRef = useRef(new Set<number>());
@@ -127,41 +117,12 @@ export function SongRequestSection() {
   const [savingReplyKey, setSavingReplyKey] = useState<string | null>(null);
 
   const fetchGenerationRef = useRef(0);
-  const mutatingCountRef = useRef(0);
   const pendingEditsRef = useRef(new Map<string, PendingCommentEdit>());
   const optimisticUntilRef = useRef(new Map<number, number>());
 
-  const markTrackOptimistic = (trackId: number, ms = 6000) => {
+  const markTrackOptimistic = (trackId: number, ms = 12000) => {
     optimisticUntilRef.current.set(trackId, Date.now() + ms);
   };
-
-  const beginMutation = () => {
-    mutatingCountRef.current += 1;
-  };
-  const endMutation = () => {
-    mutatingCountRef.current = Math.max(0, mutatingCountRef.current - 1);
-  };
-
-  // 初始化从localStorage读取已投票记录
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("void_echo_voted_ids");
-      if (stored) {
-        setLocalVotedIds(new Set(JSON.parse(stored)));
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!clientId) return;
-    setLocalVotedIds(collectParticipatedIds(requests, clientId));
-  }, [requests, clientId]);
-
-  useEffect(() => {
-    localStorage.setItem("void_echo_voted_ids", JSON.stringify(Array.from(localVotedIds)));
-  }, [localVotedIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,8 +155,6 @@ export function SongRequestSection() {
         "postgres_changes",
         { event: "*", schema: "public", table: "kv_store_2914ec93" },
         (payload) => {
-          if (mutatingCountRef.current > 0) return;
-
           if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
             const key = payload.new.key as string;
             if (!key?.startsWith("req:")) return;
@@ -343,7 +302,6 @@ export function SongRequestSection() {
     const saveKey = `${trackId}:${commentId}`;
     if (savingCommentKey === saveKey) return;
 
-    const snapshot = requests;
     const pendingKey = saveKey;
     const pendingEdit: PendingCommentEdit = {
       note: trimmed,
@@ -358,26 +316,23 @@ export function SongRequestSection() {
 
     void (async () => {
       setSavingCommentKey(saveKey);
-      beginMutation();
       try {
         await editCommentViaApi(trackId, commentId, clientId, {
           note: trimmed,
           requester: name,
         });
+        pendingEditsRef.current.delete(pendingKey);
       } catch (err) {
         console.error("Error editing comment:", err);
-        pendingEditsRef.current.delete(pendingKey);
-        setRequests(snapshot);
         const msg = err instanceof Error ? err.message : "";
-        alert(msg || "保存失败，请稍后重试");
+        alert(msg || "保存未同步到服务器，请稍后重试");
       } finally {
         setSavingCommentKey(null);
-        endMutation();
         window.setTimeout(() => {
           if (pendingEditsRef.current.get(pendingKey) === pendingEdit) {
             pendingEditsRef.current.delete(pendingKey);
           }
-        }, 8000);
+        }, 12000);
       }
     })();
   };
@@ -390,27 +345,13 @@ export function SongRequestSection() {
 
     const snapshot = requests;
     applyCommentRemoval(trackId, commentId);
-    beginMutation();
+    markTrackOptimistic(trackId);
     try {
       await removeCommentOnServer(trackId, commentId);
     } catch (err) {
       console.error("Error deleting comment:", err);
       setRequests(snapshot);
-    } finally {
-      endMutation();
     }
-  };
-
-  const mergeTrackFromServer = (trackId: number, data: SongRequest) => {
-    const until = optimisticUntilRef.current.get(trackId);
-    if (until && Date.now() < until) return;
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === trackId
-          ? mergeTrack(r, data, pendingEditsRef.current, until)
-          : r
-      )
-    );
   };
 
   const applyReplyUpdate = (trackId: number, commentId: string, updater: (replies: Reply[]) => Reply[]) => {
@@ -456,24 +397,20 @@ export function SongRequestSection() {
     applyReplyUpdate(trackId, commentId, (replies) => [...replies, newReply]);
     setReplyingKey(null);
 
-    beginMutation();
+    markTrackOptimistic(trackId);
     try {
-      const data = await postRequestsBody({
+      await postRequestsBody({
         action: "addReply",
         id: trackId,
         commentId,
         reply: newReply,
       });
-      if (data.data) {
-        mergeTrackFromServer(trackId, data.data);
-      }
     } catch (err) {
       console.error("Error adding reply:", err);
       applyReplyUpdate(trackId, commentId, (replies) =>
         replies.filter((r) => r.replyId !== newReply.replyId)
       );
     } finally {
-      endMutation();
       setSubmittingReplyKey(null);
     }
   };
@@ -484,7 +421,6 @@ export function SongRequestSection() {
     likeInFlightRef.current.add(likeKey);
     markTrackOptimistic(trackId);
 
-    const snapshot = requests;
     const now = Date.now();
     setRequests((prev) =>
       prev.map((r) => {
@@ -506,7 +442,6 @@ export function SongRequestSection() {
     );
 
     void (async () => {
-      beginMutation();
       try {
         await postLikeAction({
           action: "toggleCommentLike",
@@ -515,10 +450,9 @@ export function SongRequestSection() {
         });
       } catch (err) {
         console.error("Error toggling comment like:", err);
-        setRequests(snapshot);
+        alert("点赞未同步到服务器，请稍后重试");
       } finally {
         likeInFlightRef.current.delete(likeKey);
-        endMutation();
       }
     })();
   };
@@ -533,7 +467,6 @@ export function SongRequestSection() {
     likeInFlightRef.current.add(likeKey);
     markTrackOptimistic(trackId);
 
-    const snapshot = requests;
     const now = Date.now();
     setRequests((prev) =>
       prev.map((r) => {
@@ -562,7 +495,6 @@ export function SongRequestSection() {
     );
 
     void (async () => {
-      beginMutation();
       try {
         await postLikeAction({
           action: "toggleReplyLike",
@@ -572,10 +504,9 @@ export function SongRequestSection() {
         });
       } catch (err) {
         console.error("Error toggling reply like:", err);
-        setRequests(snapshot);
+        alert("点赞未同步到服务器，请稍后重试");
       } finally {
         likeInFlightRef.current.delete(likeKey);
-        endMutation();
       }
     })();
   };
@@ -614,7 +545,13 @@ export function SongRequestSection() {
     const saveKey = `${trackId}:${commentId}:${replyId}`;
     if (savingReplyKey === saveKey) return;
 
-    const snapshot = requests;
+    const pendingKey = saveKey;
+    const pendingEdit: PendingCommentEdit = {
+      note: trimmed,
+      requester: name,
+      updatedAt: Date.now(),
+    };
+    pendingEditsRef.current.set(pendingKey, pendingEdit);
     markTrackOptimistic(trackId);
     applyReplyTextUpdate(trackId, commentId, replyId, {
       note: trimmed,
@@ -624,20 +561,23 @@ export function SongRequestSection() {
 
     void (async () => {
       setSavingReplyKey(saveKey);
-      beginMutation();
       try {
         await editReplyViaApi(trackId, commentId, replyId, clientId, {
           note: trimmed,
           requester: name,
         });
+        pendingEditsRef.current.delete(pendingKey);
       } catch (err) {
         console.error("Error editing reply:", err);
-        setRequests(snapshot);
         const msg = err instanceof Error ? err.message : "";
-        alert(msg || "保存失败，请稍后重试");
+        alert(msg || "保存未同步到服务器，请稍后重试");
       } finally {
         setSavingReplyKey(null);
-        endMutation();
+        window.setTimeout(() => {
+          if (pendingEditsRef.current.get(pendingKey) === pendingEdit) {
+            pendingEditsRef.current.delete(pendingKey);
+          }
+        }, 12000);
       }
     })();
   };
@@ -654,23 +594,18 @@ export function SongRequestSection() {
       replies.filter((r) => r.replyId !== replyId)
     );
 
-    beginMutation();
+    markTrackOptimistic(trackId);
     try {
-      const data = await postRequestsBody({
+      await postRequestsBody({
         action: "deleteReply",
         id: trackId,
         commentId,
         replyId,
         ownerId: clientId,
       });
-      if (data.data) {
-        mergeTrackFromServer(trackId, data.data);
-      }
     } catch (err) {
       console.error("Error deleting reply:", err);
       applyReplyUpdate(trackId, commentId, (replies) => [...replies, removed]);
-    } finally {
-      endMutation();
     }
   };
 
@@ -695,22 +630,14 @@ export function SongRequestSection() {
       markTrackOptimistic(id);
       const voteSnapshot = requests;
       applyCommentRemoval(id, myVote.commentId);
-      setLocalVotedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
       void (async () => {
-        beginMutation();
         try {
           await removeCommentOnServer(id, myVote.commentId);
         } catch (err) {
           console.error("Error canceling vote:", err);
           setRequests(voteSnapshot);
-          setLocalVotedIds(collectParticipatedIds(voteSnapshot, clientId));
         } finally {
           voteInFlightRef.current.delete(id);
-          endMutation();
         }
       })();
       return;
@@ -747,10 +674,7 @@ export function SongRequestSection() {
           : r
       )
     );
-    setLocalVotedIds((prev) => new Set(prev).add(id));
-
     void (async () => {
-      beginMutation();
       try {
         await postRequestsBody({
           id,
@@ -765,10 +689,8 @@ export function SongRequestSection() {
         const msg = err instanceof Error ? err.message : "";
         if (msg.includes("\u7559\u8a00")) alert(msg);
         setRequests(voteSnapshot);
-        setLocalVotedIds(collectParticipatedIds(voteSnapshot, clientId));
       } finally {
         voteInFlightRef.current.delete(id);
-        endMutation();
       }
     })();
   };
@@ -840,7 +762,7 @@ export function SongRequestSection() {
     setTimeout(() => setSubmitted(false), 3000);
 
     const submitSnapshot = requests;
-    beginMutation();
+    markTrackOptimistic(trackId);
     try {
       await postRequestsBody(payload);
     } catch (err) {
@@ -849,8 +771,6 @@ export function SongRequestSection() {
       alert(msg || "提交失败，请稍后重试");
       setSubmitted(false);
       setRequests(submitSnapshot);
-    } finally {
-      endMutation();
     }
   };
 
@@ -1220,7 +1140,7 @@ function RequestCard({
 
   return (
     <div
-      className="relative overflow-hidden transition-all duration-200 group flex flex-col"
+      className="relative overflow-hidden group flex flex-col"
       style={{
         background: "#0E0E1C",
         border: "1px solid rgba(255,255,255,0.07)",
@@ -1228,7 +1148,7 @@ function RequestCard({
     >
       {/* Popularity bar */}
       <div
-        className="absolute left-0 top-0 bottom-0 transition-all duration-150"
+        className="absolute left-0 top-0 bottom-0 transition-[width] duration-75"
         style={{
           width: `${pct}%`,
           background: "rgba(255,159,212,0.04)",
@@ -1287,7 +1207,7 @@ function RequestCard({
           type="button"
           onClick={onVote}
           disabled={hasParticipated && !myVote}
-          className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 transition-all duration-150 hover:opacity-80 disabled:opacity-40"
+          className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 hover:opacity-80 disabled:opacity-40"
           style={{
             border: voteHighlight ? "1px solid rgba(255,159,212,0.5)" : "1px solid rgba(255,255,255,0.08)",
             background: voteHighlight ? "rgba(255,159,212,0.08)" : "transparent",
@@ -1782,7 +1702,7 @@ function LikeButton({
       type="button"
       onClick={onToggle}
       title={liked ? UNLIKE_TITLE : LIKE_TITLE}
-      className="inline-flex flex-col items-center justify-center gap-0.5 transition-all hover:scale-105"
+      className="inline-flex flex-col items-center justify-center gap-0.5 active:scale-95"
       style={{
         minWidth: compact ? 36 : 42,
         padding: compact ? "4px 6px" : "6px 8px",

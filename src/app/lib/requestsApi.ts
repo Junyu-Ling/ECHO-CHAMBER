@@ -53,11 +53,28 @@ function cacheWritePath(path: WritePath) {
 
 function writePathOrder(): WritePath[] {
   const cached = getCachedWritePath();
+  const envPath = import.meta.env.VITE_WRITE_PATH as WritePath | undefined;
   const all: WritePath[] = preferVercelApi()
     ? ["vercel", "db", "edge"]
-    : ["db", "edge"];
+    : envPath && ["vercel", "db", "edge"].includes(envPath)
+      ? [envPath, ...(["edge", "db"] as WritePath[]).filter((p) => p !== envPath)]
+      : ["edge", "db"];
   if (!cached) return all;
   return [cached, ...all.filter((p) => p !== cached)];
+}
+
+const WRITE_TIMEOUT_MS = 8000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function parseJson(res: Response) {
@@ -279,12 +296,21 @@ export async function postRequestsBody(body: Record<string, unknown>) {
 
   for (const path of writePathOrder()) {
     try {
-      const result = await persistByPath(path, body);
+      const result = await withTimeout(persistByPath(path, body), WRITE_TIMEOUT_MS);
       cacheWritePath(path);
       return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`${path}: ${msg}`);
+      if (
+        path === "db" &&
+        (msg.includes("row-level security") ||
+          msg.includes("数据库未开放") ||
+          msg.includes("permission denied") ||
+          msg.includes("JWT"))
+      ) {
+        cacheWritePath("edge");
+      }
     }
   }
 
