@@ -192,6 +192,7 @@ export async function editReply(trackId, commentId, replyId, ownerId, patch) {
     note,
     requester,
     createdAt,
+    updatedAt: Date.now(),
     time: new Date(createdAt).toISOString().slice(0, 16).replace("T", " "),
   });
   reqData.comments[idx] = comment;
@@ -258,6 +259,7 @@ export async function editComment(trackId, commentId, ownerId, patch) {
   comment.note = note;
   comment.requester = requester;
   comment.isVote = wasVote ? note === "推荐了这首金曲" : false;
+  comment.updatedAt = Date.now();
   reqData.comments[idx] = comment;
   await kv.kvSet(key, stamp(reqData));
   return { success: true, data: normalizeRequest(reqData) };

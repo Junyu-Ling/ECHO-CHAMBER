@@ -53,3 +53,13 @@ export function stampReplyFields<T extends Partial<Reply>>(fields: T): T & { cre
     time: formatCommentTimestamp(createdAt),
   };
 }
+
+export function stampCommentEdit<T extends Partial<Comment>>(
+  fields: T
+): T & { updatedAt: number } {
+  return { ...fields, updatedAt: Date.now() };
+}
+
+export function stampReplyEdit<T extends Partial<Reply>>(fields: T): T & { updatedAt: number } {
+  return { ...fields, updatedAt: Date.now() };
+}

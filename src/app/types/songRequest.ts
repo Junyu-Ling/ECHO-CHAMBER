@@ -5,6 +5,8 @@ export interface Reply {
   time: string;
   /** 留言时间（毫秒） */
   createdAt?: number;
+  /** 最后编辑时间（毫秒） */
+  updatedAt?: number;
   ownerId: string;
   likedBy?: string[];
 }
@@ -16,6 +18,8 @@ export interface Comment {
   time: string;
   /** 留言时间（毫秒） */
   createdAt?: number;
+  /** 最后编辑时间（毫秒） */
+  updatedAt?: number;
   ownerId: string;
   isVote?: boolean;
   replies?: Reply[];

@@ -45,9 +45,16 @@ import {
   formatReplyTime,
   resolveCommentCreatedAt,
   resolveReplyCreatedAt,
+  stampCommentEdit,
   stampCommentFields,
+  stampReplyEdit,
   stampReplyFields,
 } from "../lib/commentTime";
+import {
+  applyTrackFromRemote,
+  mergeRequestsList,
+  mergeTrack,
+} from "../lib/mergeRequestTracks";
 import { stopPreviewIf, subscribePreview, togglePreview } from "../lib/previewAudio";
 import {
   COMMENT_EDIT_BTN,
@@ -86,47 +93,6 @@ function isLikedBy(likedBy: string[] | undefined, ownerId: string) {
 
 function normalizeRequestsList(list: SongRequest[]) {
   return list.map(normalizeRequest);
-}
-
-function getTrackTimestamp(req: SongRequest) {
-  return req.updatedAt ?? req.createdAt ?? 0;
-}
-
-/** Prefer newer server data; keep optimistic new tracks until server list includes them. */
-function mergeRequestsList(prev: SongRequest[], incoming: SongRequest[]) {
-  const prevById = new Map(prev.map((r) => [r.id, r]));
-  const incomingIds = new Set<number>();
-
-  const merged = incoming.map((remote) => {
-    const normalized = normalizeRequest(remote);
-    incomingIds.add(normalized.id);
-    const local = prevById.get(normalized.id);
-    if (!local) return normalized;
-    return getTrackTimestamp(normalized) >= getTrackTimestamp(local)
-      ? normalized
-      : local;
-  });
-
-  const localOnly = prev.filter((r) => !incomingIds.has(r.id));
-  return [...localOnly, ...merged];
-}
-
-function applyTrackFromRemote(prev: SongRequest[], remote: SongRequest) {
-  const normalized = normalizeRequest(remote);
-  const idx = prev.findIndex((r) => r.id === normalized.id);
-  if (idx < 0) {
-    if (!normalized.comments?.length) return prev;
-    return [normalized, ...prev];
-  }
-  if (getTrackTimestamp(normalized) < getTrackTimestamp(prev[idx])) {
-    return prev;
-  }
-  if (!normalized.comments?.length) {
-    return prev.filter((r) => r.id !== normalized.id);
-  }
-  const next = [...prev];
-  next[idx] = normalized;
-  return next;
 }
 
 function collectParticipatedIds(list: SongRequest[], clientId: string) {
@@ -214,6 +180,8 @@ export function SongRequestSection() {
         "postgres_changes",
         { event: "*", schema: "public", table: "kv_store_2914ec93" },
         (payload) => {
+          if (mutatingCountRef.current > 0) return;
+
           if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
             const key = payload.new.key as string;
             if (!key?.startsWith("req:")) return;
@@ -314,14 +282,15 @@ export function SongRequestSection() {
     commentId: string,
     patch: { note: string; requester: string }
   ) => {
+    const now = Date.now();
     setRequests((prev) =>
       prev.map((r) => {
         if (r.id !== trackId) return r;
         return {
           ...r,
-          updatedAt: Date.now(),
+          updatedAt: now,
           comments: r.comments.map((c) =>
-            c.commentId === commentId ? { ...c, ...patch } : c
+            c.commentId === commentId ? stampCommentEdit({ ...c, ...patch }) : c
           ),
         };
       })
@@ -390,8 +359,9 @@ export function SongRequestSection() {
   };
 
   const mergeTrackFromServer = (trackId: number, data: SongRequest) => {
-    const normalized = normalizeRequest(data);
-    setRequests((prev) => prev.map((r) => (r.id === trackId ? normalized : r)));
+    setRequests((prev) =>
+      prev.map((r) => (r.id === trackId ? mergeTrack(r, data) : r))
+    );
   };
 
   const applyReplyUpdate = (trackId: number, commentId: string, updater: (replies: Reply[]) => Reply[]) => {
@@ -561,7 +531,9 @@ export function SongRequestSection() {
     patch: { note: string; requester: string }
   ) => {
     applyReplyUpdate(trackId, commentId, (replies) =>
-      replies.map((r) => (r.replyId === replyId ? { ...r, ...patch } : r))
+      replies.map((r) =>
+        r.replyId === replyId ? stampReplyEdit({ ...r, ...patch }) : r
+      )
     );
   };
 

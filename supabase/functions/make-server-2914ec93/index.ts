@@ -275,6 +275,7 @@ async function editReplyInStore(
     note,
     requester,
     createdAt,
+    updatedAt: Date.now(),
     time: timeStr,
   });
   reqData.comments[idx] = comment;
@@ -335,6 +336,7 @@ async function editCommentInStore(
   comment.note = note;
   comment.requester = requester;
   comment.isVote = wasVote ? note === "推荐了这首金曲" : false;
+  comment.updatedAt = Date.now();
   reqData.comments[idx] = comment;
   await kv.set(key, stampReq(reqData));
   return normalizeRequest(reqData);

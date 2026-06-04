@@ -1,6 +1,11 @@
 import { supabase } from "../supabaseClient";
 import { VOTE_NOTE } from "../copy/voteCopy";
-import { formatCommentTimestamp, inferTimestampFromId } from "./commentTime";
+import {
+  formatCommentTimestamp,
+  inferTimestampFromId,
+  stampCommentEdit,
+  stampReplyEdit,
+} from "./commentTime";
 import { dedupeOwnerComments, isVoteComment } from "./voteParticipation";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
 
@@ -212,13 +217,15 @@ export async function updateReplyInDb(
     throw new Error("Unauthorized or reply not found");
   }
   const createdAt = reply.createdAt || inferTimestampFromId(reply.replyId) || Date.now();
-  comment.replies![rIdx] = normalizeReply({
-    ...reply,
-    note,
-    requester,
-    createdAt,
-    time: formatCommentTimestamp(createdAt),
-  });
+  comment.replies![rIdx] = normalizeReply(
+    stampReplyEdit({
+      ...reply,
+      note,
+      requester,
+      createdAt,
+      time: formatCommentTimestamp(createdAt),
+    })
+  );
   reqData.comments[idx] = comment as SongRequest["comments"][0];
   await kvSet(key, stamp(normalizeRequest(reqData)));
   return normalizeRequest(reqData);
@@ -265,10 +272,13 @@ export async function updateCommentInDb(
     throw new Error("Unauthorized or comment not found");
   }
   const wasVote = comment.isVote === true || isVoteComment(comment);
-  comment.note = note;
-  comment.requester = requester;
-  comment.isVote = wasVote ? note === VOTE_NOTE : false;
-  reqData.comments[idx] = comment as SongRequest["comments"][0];
+  const edited = stampCommentEdit({
+    ...comment,
+    note,
+    requester,
+    isVote: wasVote ? note === VOTE_NOTE : false,
+  });
+  reqData.comments[idx] = edited as SongRequest["comments"][0];
   await kvSet(key, stamp(normalizeRequest(reqData)));
   return normalizeRequest(reqData);
 }
