@@ -86,17 +86,84 @@ for (const [id, videoPath] of videoPosterSources) {
 const MEMBER_TARGET_W = 960;
 const MEMBER_TARGET_H = 1280;
 
-/** @typedef {{ position?: string; maxUpscale?: number; sharpen?: boolean }} MemberOpts */
+/** @typedef {{ position?: string; maxUpscale?: number; sharpen?: boolean; despeckle?: boolean }} MemberOpts */
 
 /**
- * Export member portrait WebP: smart crop, capped upscale, mild sharpen.
+ * Remove isolated white speckles on dark edges (common cutout / compression artifacts).
+ * @param {import("sharp").Sharp} sharpImage
+ */
+async function despeckleWhiteDots(sharpImage) {
+  const { data, info } = await sharpImage
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const { width: w, height: h, channels: ch } = info;
+  const out = Buffer.from(data);
+  const lumAt = (idx) =>
+    0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+  const isSpeckle = (idx) =>
+    data[idx] > 175 &&
+    data[idx + 1] > 175 &&
+    data[idx + 2] > 175 &&
+    Math.max(data[idx], data[idx + 1], data[idx + 2]) -
+      Math.min(data[idx], data[idx + 1], data[idx + 2]) <
+      45;
+
+  for (let pass = 0; pass < 2; pass++) {
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = (y * w + x) * ch;
+      if (!isSpeckle(idx)) continue;
+
+      let darkNeighbors = 0;
+      let rSum = 0;
+      let gSum = 0;
+      let bSum = 0;
+      let n = 0;
+
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const j = ((y + dy) * w + (x + dx)) * ch;
+          if (lumAt(j) < 130) darkNeighbors++;
+          if (!isSpeckle(j)) {
+            rSum += data[j];
+            gSum += data[j + 1];
+            bSum += data[j + 2];
+            n++;
+          }
+        }
+      }
+
+      if (darkNeighbors >= 3 && n > 0) {
+        out[idx] = Math.round(rSum / n);
+        out[idx + 1] = Math.round(gSum / n);
+        out[idx + 2] = Math.round(bSum / n);
+      }
+    }
+  }
+  for (let i = 0; i < data.length; i++) data[i] = out[i];
+  }
+
+  return sharp(out, { raw: { width: w, height: h, channels: ch } });
+}
+
+/** Blend with median pass to suppress remaining bright speckles on dark areas. */
+async function suppressBrightSpeckles(sharpImage, medianSize = 3) {
+  const buf = await sharpImage.ensureAlpha().png().toBuffer();
+  const med = await sharp(buf).median(medianSize).toBuffer();
+  return sharp(buf).composite([{ input: med, blend: "darken" }]);
+}
+
+/**
+ * Export member portrait WebP: smart crop, optional despeckle, light sharpen only on small sources.
  * @param {string} inputPath
  * @param {string} outputPath
  * @param {MemberOpts} [opts]
  */
 async function processMemberPhoto(inputPath, outputPath, opts = {}) {
   const position = opts.position ?? "attention";
-  const applySharpen = opts.sharpen !== false;
+  const despeckle = opts.despeckle === true;
 
   const meta = await sharp(inputPath).metadata();
   const srcW = meta.width ?? 0;
@@ -140,27 +207,42 @@ async function processMemberPhoto(inputPath, outputPath, opts = {}) {
     );
   }
 
-  let pipeline = sharp(inputPath)
-    .rotate()
-    .resize(outW, outH, {
-      fit: "cover",
-      position,
-      kernel: sharp.kernel.lanczos3,
-    });
+  let pipeline = sharp(inputPath).rotate();
 
+  if (despeckle) {
+    const rotated = await pipeline.toBuffer();
+    pipeline = await despeckleWhiteDots(sharp(rotated));
+  }
+
+  pipeline = pipeline.resize(outW, outH, {
+    fit: "cover",
+    position,
+    kernel: sharp.kernel.lanczos3,
+  });
+
+  if (despeckle) {
+    pipeline = await suppressBrightSpeckles(pipeline);
+  }
+
+  const applySharpen =
+    opts.sharpen === true || (opts.sharpen !== false && maxDim < 800);
   if (applySharpen) {
-    pipeline = pipeline.sharpen({ sigma: maxDim < 480 ? 0.9 : 0.65, m1: 1, m2: 0.35 });
+    pipeline = pipeline.sharpen({ sigma: maxDim < 480 ? 0.8 : 0.5, m1: 0.85, m2: 0.25 });
   }
 
   await pipeline
-    .webp({ quality: maxDim < 480 ? 96 : 92, effort: 6, smartSubsample: true })
+    .webp({
+      quality: maxDim < 480 ? 96 : 94,
+      effort: 6,
+      smartSubsample: false,
+    })
     .toFile(outputPath);
 
   console.log(`[media] ${path.basename(outputPath)} ← ${srcW}×${srcH} → ${outW}×${outH}`);
 }
 
 const memberSources = [
-  ["gong-laoshi.png", "gong-laoshi.webp", { position: "centre" }],
+  ["gong-laoshi.png", "gong-laoshi.webp", { position: "centre", sharpen: false, despeckle: true }],
   ["shen-xinyu.png", "shen-xinyu.webp", {}],
   ["richard.png", "richard.webp", {}],
   ["ellis.png", "ellis.webp", {}],

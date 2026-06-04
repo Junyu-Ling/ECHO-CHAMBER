@@ -179,6 +179,7 @@ function MemberCard({ member }: { member: (typeof members)[number] }) {
                 ? member.photoPosition
                 : "center center",
           }}
+          showSkeleton={false}
           loading="lazy"
           decoding="async"
         />
