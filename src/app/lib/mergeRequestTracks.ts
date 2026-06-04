@@ -1,18 +1,47 @@
-import { resolveCommentCreatedAt, resolveReplyCreatedAt } from "./commentTime";
+import { resolveReplyCreatedAt } from "./commentTime";
 import { normalizeRequest } from "./requestsStore";
-import { dedupeOwnerComments } from "./voteParticipation";
+import { commentRevision, dedupeOwnerComments } from "./voteParticipation";
 import type { Comment, Reply, SongRequest } from "../types/songRequest";
+
+export type PendingCommentEdit = {
+  note: string;
+  requester: string;
+  updatedAt: number;
+};
+
+export type PendingEditsMap = Map<string, PendingCommentEdit>;
+
+function pendingKey(trackId: number, commentId: string) {
+  return `${trackId}:${commentId}`;
+}
+
+function replyRevision(r: Reply) {
+  return r.updatedAt ?? resolveReplyCreatedAt(r);
+}
 
 function trackTimestamp(req: SongRequest) {
   return req.updatedAt ?? req.createdAt ?? 0;
 }
 
-function commentRevision(c: Comment) {
-  return c.updatedAt ?? resolveCommentCreatedAt(c);
-}
-
-function replyRevision(r: Reply) {
-  return r.updatedAt ?? resolveReplyCreatedAt(r);
+/** Force in-flight edits over merged remote rows until server confirms. */
+export function applyPendingCommentEdits(
+  track: SongRequest,
+  pending?: PendingEditsMap
+): SongRequest {
+  if (!pending?.size) return track;
+  let changed = false;
+  const comments = track.comments.map((c) => {
+    const p = pending.get(pendingKey(track.id, c.commentId));
+    if (!p) return c;
+    changed = true;
+    return {
+      ...c,
+      note: p.note,
+      requester: p.requester,
+      updatedAt: Math.max(p.updatedAt, c.updatedAt ?? 0),
+    };
+  });
+  return changed ? { ...track, comments } : track;
 }
 
 function mergeReplies(local: Reply[], remote: Reply[]): Reply[] {
@@ -53,27 +82,35 @@ function mergeComments(local: Comment[], remote: Comment[]): Comment[] {
     }
   }
 
-  return dedupeOwnerComments(
-    merged.sort((a, b) => commentRevision(b) - commentRevision(a))
-  );
+  return merged.sort((a, b) => commentRevision(b) - commentRevision(a));
 }
 
 /** Merge local optimistic state with remote KV/realtime payload without losing fresh edits. */
-export function mergeTrack(local: SongRequest, remote: SongRequest): SongRequest {
+export function mergeTrack(
+  local: SongRequest,
+  remote: SongRequest,
+  pending?: PendingEditsMap
+): SongRequest {
   const localNorm = normalizeRequest(local);
   const remoteNorm = normalizeRequest(remote);
   const remoteNewer = trackTimestamp(remoteNorm) >= trackTimestamp(localNorm);
   const base = remoteNewer ? remoteNorm : localNorm;
   const comments = mergeComments(localNorm.comments, remoteNorm.comments);
 
-  return normalizeRequest({
+  const merged = normalizeRequest({
     ...base,
     comments,
     updatedAt: Math.max(trackTimestamp(localNorm), trackTimestamp(remoteNorm)),
   });
+
+  return applyPendingCommentEdits(merged, pending);
 }
 
-export function mergeRequestsList(prev: SongRequest[], incoming: SongRequest[]) {
+export function mergeRequestsList(
+  prev: SongRequest[],
+  incoming: SongRequest[],
+  pending?: PendingEditsMap
+) {
   const prevById = new Map(prev.map((r) => [r.id, r]));
   const incomingIds = new Set<number>();
 
@@ -81,25 +118,41 @@ export function mergeRequestsList(prev: SongRequest[], incoming: SongRequest[]) 
     const normalized = normalizeRequest(remote);
     incomingIds.add(normalized.id);
     const local = prevById.get(normalized.id);
-    if (!local) return normalized;
-    return mergeTrack(local, normalized);
+    if (!local) return applyPendingCommentEdits(normalized, pending);
+    return mergeTrack(local, normalized, pending);
   });
 
-  const localOnly = prev.filter((r) => !incomingIds.has(r.id));
+  const localOnly = prev
+    .filter((r) => !incomingIds.has(r.id))
+    .map((r) => applyPendingCommentEdits(r, pending));
   return [...localOnly, ...merged];
 }
 
-export function applyTrackFromRemote(prev: SongRequest[], remote: SongRequest) {
+export function applyTrackFromRemote(
+  prev: SongRequest[],
+  remote: SongRequest,
+  pending?: PendingEditsMap
+) {
   const normalized = normalizeRequest(remote);
   const idx = prev.findIndex((r) => r.id === normalized.id);
   if (idx < 0) {
     if (!normalized.comments?.length) return prev;
-    return [normalized, ...prev];
+    return [applyPendingCommentEdits(normalized, pending), ...prev];
   }
   if (!normalized.comments?.length) {
     return prev.filter((r) => r.id !== normalized.id);
   }
   const next = [...prev];
-  next[idx] = mergeTrack(prev[idx], normalized);
+  next[idx] = mergeTrack(prev[idx], normalized, pending);
   return next;
+}
+
+export function serverCommentMatchesEdit(
+  track: SongRequest,
+  commentId: string,
+  expected: { note: string; requester: string }
+) {
+  const c = track.comments.find((row) => row.commentId === commentId);
+  if (!c) return false;
+  return c.note === expected.note && c.requester === expected.requester;
 }

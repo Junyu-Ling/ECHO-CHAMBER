@@ -54,6 +54,8 @@ import {
   applyTrackFromRemote,
   mergeRequestsList,
   mergeTrack,
+  serverCommentMatchesEdit,
+  type PendingCommentEdit,
 } from "../lib/mergeRequestTracks";
 import { stopPreviewIf, subscribePreview, togglePreview } from "../lib/previewAudio";
 import {
@@ -127,6 +129,7 @@ export function SongRequestSection() {
 
   const fetchGenerationRef = useRef(0);
   const mutatingCountRef = useRef(0);
+  const pendingEditsRef = useRef(new Map<string, PendingCommentEdit>());
 
   const beginMutation = () => {
     mutatingCountRef.current += 1;
@@ -164,7 +167,9 @@ export function SongRequestSection() {
       try {
         const list = await fetchAllRequests();
         if (cancelled || gen !== fetchGenerationRef.current) return;
-        setRequests((prev) => mergeRequestsList(prev, normalizeRequestsList(list)));
+        setRequests((prev) =>
+          mergeRequestsList(prev, normalizeRequestsList(list), pendingEditsRef.current)
+        );
       } catch (err) {
         console.error("Network or parsing error fetching requests:", err);
       } finally {
@@ -208,7 +213,7 @@ export function SongRequestSection() {
 
             if (newReq) {
               setRequests((prev) =>
-                applyTrackFromRemote(prev, newReq as SongRequest)
+                applyTrackFromRemote(prev, newReq as SongRequest, pendingEditsRef.current)
               );
             }
           } else if (payload.eventType === "DELETE") {
@@ -245,7 +250,9 @@ export function SongRequestSection() {
     try {
       const list = await fetchAllRequests();
       if (gen !== fetchGenerationRef.current) return;
-      setRequests((prev) => mergeRequestsList(prev, normalizeRequestsList(list)));
+      setRequests((prev) =>
+        mergeRequestsList(prev, normalizeRequestsList(list), pendingEditsRef.current)
+      );
     } catch {
       /* ignore */
     }
@@ -318,6 +325,14 @@ export function SongRequestSection() {
     if (savingCommentKey === saveKey) return;
 
     const snapshot = requests;
+    const pendingKey = saveKey;
+    const pendingEdit: PendingCommentEdit = {
+      note: trimmed,
+      requester: name,
+      updatedAt: Date.now(),
+    };
+    pendingEditsRef.current.set(pendingKey, pendingEdit);
+
     applyCommentTextUpdate(trackId, commentId, { note: trimmed, requester: name });
     setEditingCommentKey(null);
     setSavingCommentKey(saveKey);
@@ -327,15 +342,36 @@ export function SongRequestSection() {
         note: trimmed,
         requester: name,
       });
-      if (data.data) mergeTrackFromServer(trackId, data.data as SongRequest);
+      if (data.data) {
+        const serverTrack = data.data as SongRequest;
+        if (
+          !serverCommentMatchesEdit(serverTrack, commentId, {
+            note: trimmed,
+            requester: name,
+          })
+        ) {
+          throw new Error(
+            "保存未同步到服务器，请刷新后重试或执行 pnpm db:kv-policies / pnpm deploy:edge"
+          );
+        }
+        mergeTrackFromServer(trackId, serverTrack);
+      } else {
+        throw new Error("服务器未返回更新后的数据");
+      }
     } catch (err) {
       console.error("Error editing comment:", err);
+      pendingEditsRef.current.delete(pendingKey);
       setRequests(snapshot);
       const msg = err instanceof Error ? err.message : "";
       alert(msg || "保存失败，请稍后重试");
     } finally {
       setSavingCommentKey(null);
       endMutation();
+      window.setTimeout(() => {
+        if (pendingEditsRef.current.get(pendingKey) === pendingEdit) {
+          pendingEditsRef.current.delete(pendingKey);
+        }
+      }, 8000);
     }
   };
 
@@ -360,7 +396,9 @@ export function SongRequestSection() {
 
   const mergeTrackFromServer = (trackId: number, data: SongRequest) => {
     setRequests((prev) =>
-      prev.map((r) => (r.id === trackId ? mergeTrack(r, data) : r))
+      prev.map((r) =>
+        r.id === trackId ? mergeTrack(r, data, pendingEditsRef.current) : r
+      )
     );
   };
 

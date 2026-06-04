@@ -31,14 +31,16 @@ export function findMyVoteComment(
   return getMyCommentsOnTrack(comments, ownerId).find(isVoteComment);
 }
 
-function commentSortKey(c: Comment): number {
+/** 排序/去重用：编辑时间优先于创建时间 */
+export function commentRevision(c: Comment): number {
+  if (typeof c.updatedAt === "number" && c.updatedAt > 0) return c.updatedAt;
   if (typeof c.createdAt === "number" && c.createdAt > 0) return c.createdAt;
   return inferTimestampFromId(c.commentId) ?? 0;
 }
 
 /**
  * 同一设备对一首歌只能保留一条参与记录。
- * 优先保留非投票留言；若均为投票则保留最早一条。
+ * 优先保留非投票留言；若有多条则保留最新（含编辑）的一条。
  */
 export function dedupeOwnerComments(comments: Comment[]): Comment[] {
   const withoutOwner = comments.filter((c) => !c.ownerId);
@@ -60,13 +62,13 @@ export function dedupeOwnerComments(comments: Comment[]): Comment[] {
     }
     const messages = list.filter((c) => c.isVote !== true);
     if (messages.length > 0) {
-      messages.sort((a, b) => commentSortKey(a) - commentSortKey(b));
+      messages.sort((a, b) => commentRevision(b) - commentRevision(a));
       kept.push(messages[0]);
       continue;
     }
-    const votes = [...list].sort((a, b) => commentSortKey(a) - commentSortKey(b));
+    const votes = [...list].sort((a, b) => commentRevision(b) - commentRevision(a));
     kept.push(votes[0]);
   }
 
-  return kept.sort((a, b) => commentSortKey(b) - commentSortKey(a));
+  return kept.sort((a, b) => commentRevision(b) - commentRevision(a));
 }
