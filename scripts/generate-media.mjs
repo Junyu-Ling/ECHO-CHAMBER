@@ -86,7 +86,7 @@ for (const [id, videoPath] of videoPosterSources) {
 const MEMBER_TARGET_W = 960;
 const MEMBER_TARGET_H = 1280;
 
-/** @typedef {{ position?: string; maxUpscale?: number; sharpen?: boolean; despeckle?: boolean }} MemberOpts */
+/** @typedef {{ position?: string; maxUpscale?: number; sharpen?: boolean; despeckle?: boolean; cropZoom?: number }} MemberOpts */
 
 /**
  * Remove isolated white speckles on dark edges (common cutout / compression artifacts).
@@ -224,6 +224,28 @@ async function processMemberPhoto(inputPath, outputPath, opts = {}) {
     pipeline = await suppressBrightSpeckles(pipeline);
   }
 
+  const cropZoom = opts.cropZoom ?? 1;
+  if (cropZoom > 1) {
+    const buf = await pipeline.toBuffer();
+    const meta = await sharp(buf).metadata();
+    const w = meta.width ?? outW;
+    const h = meta.height ?? outH;
+    const nw = Math.max(1, Math.round(w / cropZoom));
+    const nh = Math.max(1, Math.round(h / cropZoom));
+    pipeline = sharp(buf)
+      .extract({
+        left: Math.round((w - nw) / 2),
+        top: Math.round((h - nh) / 2),
+        width: nw,
+        height: nh,
+      })
+      .resize(outW, outH, {
+        fit: "cover",
+        position: "centre",
+        kernel: sharp.kernel.lanczos3,
+      });
+  }
+
   const applySharpen =
     opts.sharpen === true || (opts.sharpen !== false && maxDim < 800);
   if (applySharpen) {
@@ -248,7 +270,7 @@ const memberSources = [
   ["ellis.png", "ellis.webp", {}],
   ["bai-qianhe.png", "bai-qianhe.webp", { position: "top", maxUpscale: 1.65 }],
   ["gu-chenyang.png", "gu-chenyang.webp", {}],
-  ["huang-ziyi.png", "huang-ziyi.webp", { position: "attention", maxUpscale: 2.2 }],
+  ["huang-ziyi.png", "huang-ziyi.webp", { position: "centre", maxUpscale: 2.2, cropZoom: 1.08 }],
   ["liu-yiyang.png", "liu-yiyang.webp", { position: "centre", maxUpscale: 2.2 }],
 ];
 

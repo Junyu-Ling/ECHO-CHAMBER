@@ -133,7 +133,8 @@ const members = [
     roleEn: "中国部 G10C1",
     bio: "声音极具穿透力与爆发感，舞台中央闪耀的绝对核心",
     photo: huangZiyiPhoto,
-    photoPosition: "center 28%",
+    photoPosition: "center center",
+    photoZoom: 1.06,
   }
 ];
 
@@ -174,12 +175,20 @@ function MemberCard({ member }: { member: (typeof members)[number] }) {
         <ImageWithFallback
           src={member.photo}
           alt={member.name}
-          className="relative w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          className={`relative w-full h-full object-cover transition-transform duration-700 ${
+            "photoZoom" in member && member.photoZoom
+              ? "group-hover:scale-[1.08]"
+              : "group-hover:scale-105"
+          }`}
           style={{
             objectPosition:
               "photoPosition" in member && member.photoPosition
                 ? member.photoPosition
                 : "center center",
+            transform:
+              "photoZoom" in member && member.photoZoom
+                ? `scale(${member.photoZoom})`
+                : undefined,
           }}
           showSkeleton={false}
           loading="lazy"
