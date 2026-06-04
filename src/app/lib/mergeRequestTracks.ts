@@ -77,7 +77,13 @@ function mergeComments(local: Comment[], remote: Comment[]): Comment[] {
     else {
       const useLocal = commentRevision(l) >= commentRevision(r);
       const primary = useLocal ? { ...l } : { ...r };
+      const secondary = useLocal ? r : l;
       primary.replies = mergeReplies(l.replies || [], r.replies || []);
+      if ((primary.likedBy || []).length !== (secondary.likedBy || []).length) {
+        const pLen = (primary.likedBy || []).length;
+        const sLen = (secondary.likedBy || []).length;
+        if (sLen > pLen) primary.likedBy = secondary.likedBy;
+      }
       merged.push(primary);
     }
   }

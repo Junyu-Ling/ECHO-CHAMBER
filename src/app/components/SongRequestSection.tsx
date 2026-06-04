@@ -118,10 +118,10 @@ export function SongRequestSection() {
   const [nameInput, setNameInput] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [localVotedIds, setLocalVotedIds] = useState<Set<number>>(new Set());
-  const [votingIds, setVotingIds] = useState<Set<number>>(new Set());
   const [replyingKey, setReplyingKey] = useState<string | null>(null);
   const [submittingReplyKey, setSubmittingReplyKey] = useState<string | null>(null);
-  const [likingKeys, setLikingKeys] = useState<Set<string>>(new Set());
+  const voteInFlightRef = useRef(new Set<number>());
+  const likeInFlightRef = useRef(new Set<string>());
   const [editingCommentKey, setEditingCommentKey] = useState<string | null>(null);
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
   const [editingReplyKey, setEditingReplyKey] = useState<string | null>(null);
@@ -467,71 +467,79 @@ export function SongRequestSection() {
     }
   };
 
-  const handleToggleCommentLike = async (trackId: number, commentId: string) => {
+  const handleToggleCommentLike = (trackId: number, commentId: string) => {
     const likeKey = `c:${trackId}:${commentId}`;
-    if (likingKeys.has(likeKey)) return;
+    if (likeInFlightRef.current.has(likeKey)) return;
+    likeInFlightRef.current.add(likeKey);
 
     const snapshot = requests;
-    setLikingKeys((prev) => new Set(prev).add(likeKey));
+    const now = Date.now();
     setRequests((prev) =>
       prev.map((r) => {
         if (r.id !== trackId) return r;
         return {
           ...r,
-          updatedAt: Date.now(),
+          updatedAt: now,
           comments: r.comments.map((c) =>
             c.commentId === commentId
-              ? { ...c, likedBy: toggleLikedByList(c.likedBy, clientId) }
+              ? {
+                  ...c,
+                  updatedAt: now,
+                  likedBy: toggleLikedByList(c.likedBy, clientId),
+                }
               : c
           ),
         };
       })
     );
 
-    beginMutation();
-    try {
-      const data = await postLikeAction({
-        action: "toggleCommentLike",
-        id: trackId,
-        commentId,
-      });
-      mergeTrackFromServer(trackId, data);
-    } catch (err) {
-      console.error("Error toggling comment like:", err);
-      setRequests(snapshot);
-    } finally {
-      endMutation();
-      setLikingKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(likeKey);
-        return next;
-      });
-    }
+    void (async () => {
+      beginMutation();
+      try {
+        await postLikeAction({
+          action: "toggleCommentLike",
+          id: trackId,
+          commentId,
+        });
+      } catch (err) {
+        console.error("Error toggling comment like:", err);
+        setRequests(snapshot);
+      } finally {
+        likeInFlightRef.current.delete(likeKey);
+        endMutation();
+      }
+    })();
   };
 
-  const handleToggleReplyLike = async (
+  const handleToggleReplyLike = (
     trackId: number,
     commentId: string,
     replyId: string
   ) => {
     const likeKey = `r:${trackId}:${commentId}:${replyId}`;
-    if (likingKeys.has(likeKey)) return;
+    if (likeInFlightRef.current.has(likeKey)) return;
+    likeInFlightRef.current.add(likeKey);
 
     const snapshot = requests;
-    setLikingKeys((prev) => new Set(prev).add(likeKey));
+    const now = Date.now();
     setRequests((prev) =>
       prev.map((r) => {
         if (r.id !== trackId) return r;
         return {
           ...r,
-          updatedAt: Date.now(),
+          updatedAt: now,
           comments: r.comments.map((c) => {
             if (c.commentId !== commentId) return c;
             return {
               ...c,
+              updatedAt: now,
               replies: (c.replies || []).map((reply) =>
                 reply.replyId === replyId
-                  ? { ...reply, likedBy: toggleLikedByList(reply.likedBy, clientId) }
+                  ? {
+                      ...reply,
+                      updatedAt: now,
+                      likedBy: toggleLikedByList(reply.likedBy, clientId),
+                    }
                   : reply
               ),
             };
@@ -540,26 +548,23 @@ export function SongRequestSection() {
       })
     );
 
-    beginMutation();
-    try {
-      const data = await postLikeAction({
-        action: "toggleReplyLike",
-        id: trackId,
-        commentId,
-        replyId,
-      });
-      mergeTrackFromServer(trackId, data);
-    } catch (err) {
-      console.error("Error toggling reply like:", err);
-      setRequests(snapshot);
-    } finally {
-      endMutation();
-      setLikingKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(likeKey);
-        return next;
-      });
-    }
+    void (async () => {
+      beginMutation();
+      try {
+        await postLikeAction({
+          action: "toggleReplyLike",
+          id: trackId,
+          commentId,
+          replyId,
+        });
+      } catch (err) {
+        console.error("Error toggling reply like:", err);
+        setRequests(snapshot);
+      } finally {
+        likeInFlightRef.current.delete(likeKey);
+        endMutation();
+      }
+    })();
   };
 
   const applyReplyTextUpdate = (
@@ -658,83 +663,96 @@ export function SongRequestSection() {
     setSearchValue(`${track.trackName} — ${track.artistName}`);
   };
 
-  const handleVote = async (id: number) => {
-    if (votingIds.has(id)) return;
+  const handleVote = (id: number) => {
+    if (voteInFlightRef.current.has(id)) return;
+    voteInFlightRef.current.add(id);
     const existingReq = requests.find((r) => r.id === id);
-    if (!existingReq) return;
+    if (!existingReq) {
+      voteInFlightRef.current.delete(id);
+      return;
+    }
 
     const myVote = findMyVoteComment(existingReq.comments, clientId);
-    const hasParticipated =
-      localVotedIds.has(id) ||
-      hasParticipatedOnTrack(existingReq.comments, clientId);
+    const hasParticipated = hasParticipatedOnTrack(existingReq.comments, clientId);
 
-    setVotingIds((prev) => new Set(prev).add(id));
-    beginMutation();
-
-    try {
-      if (hasParticipated && myVote) {
-        const voteSnapshot = requests;
-        applyCommentRemoval(id, myVote.commentId);
+    if (hasParticipated && myVote) {
+      const voteSnapshot = requests;
+      applyCommentRemoval(id, myVote.commentId);
+      setLocalVotedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      void (async () => {
+        beginMutation();
         try {
           await removeCommentOnServer(id, myVote.commentId);
         } catch (err) {
           console.error("Error canceling vote:", err);
           setRequests(voteSnapshot);
+          setLocalVotedIds(collectParticipatedIds(voteSnapshot, clientId));
+        } finally {
+          voteInFlightRef.current.delete(id);
+          endMutation();
         }
-        return;
-      }
-
-      if (hasParticipated) {
-        alert(VOTE_ALREADY_PARTICIPATED);
-        return;
-      }
-
-      const newComment: Comment = stampCommentFields({
-        commentId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        note: VOTE_NOTE,
-        requester: VOTE_REQUESTER,
-        ownerId: clientId,
-        isVote: true,
-        replies: [],
-        likedBy: [],
-      });
-
-      setRequests((prev) =>
-        prev.map((r) =>
-          r.id === id
-            ? {
-                ...r,
-                updatedAt: Date.now(),
-                votes: r.comments.length + 1,
-                comments: [newComment, ...r.comments],
-              }
-            : r
-        )
-      );
-      const data = await postRequestsBody({
-        id,
-        song: existingReq.song,
-        artist: existingReq.artist,
-        artwork: existingReq.artwork,
-        previewUrl: existingReq.previewUrl,
-        comments: [newComment],
-      });
-      if (data.data) {
-        mergeTrackFromServer(id, data.data);
-      }
-    } catch (err) {
-      console.error("Error voting:", err);
-      const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("\u7559\u8a00")) alert(msg);
-      await refetchRequests();
-    } finally {
-      endMutation();
-      setVotingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      })();
+      return;
     }
+
+    if (hasParticipated) {
+      alert(VOTE_ALREADY_PARTICIPATED);
+      voteInFlightRef.current.delete(id);
+      return;
+    }
+
+    const newComment: Comment = stampCommentFields({
+      commentId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      note: VOTE_NOTE,
+      requester: VOTE_REQUESTER,
+      ownerId: clientId,
+      isVote: true,
+      replies: [],
+      likedBy: [],
+    });
+
+    const voteSnapshot = requests;
+    const now = Date.now();
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              updatedAt: now,
+              comments: [newComment, ...r.comments],
+              votes: r.votes + 1,
+            }
+          : r
+      )
+    );
+    setLocalVotedIds((prev) => new Set(prev).add(id));
+
+    void (async () => {
+      beginMutation();
+      try {
+        await postRequestsBody({
+          id,
+          song: existingReq.song,
+          artist: existingReq.artist,
+          artwork: existingReq.artwork,
+          previewUrl: existingReq.previewUrl,
+          comments: [newComment],
+        });
+      } catch (err) {
+        console.error("Error voting:", err);
+        const msg = err instanceof Error ? err.message : "";
+        if (msg.includes("\u7559\u8a00")) alert(msg);
+        setRequests(voteSnapshot);
+        setLocalVotedIds(collectParticipatedIds(voteSnapshot, clientId));
+      } finally {
+        voteInFlightRef.current.delete(id);
+        endMutation();
+      }
+    })();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -806,10 +824,7 @@ export function SongRequestSection() {
     const submitSnapshot = requests;
     beginMutation();
     try {
-      const data = await postRequestsBody(payload);
-      if (data.data) {
-        mergeTrackFromServer(trackId, data.data);
-      }
+      await postRequestsBody(payload);
     } catch (err) {
       console.error("Error submitting request:", err);
       const msg = err instanceof Error ? err.message : "";
@@ -998,7 +1013,6 @@ export function SongRequestSection() {
                     rank={sortMode === "hot" ? index + 1 : undefined}
                     maxVotes={maxVotes}
                     onVote={() => handleVote(req.id)}
-                    voteBusy={votingIds.has(req.id)}
                     onDeleteComment={(commentId) => handleDeleteComment(req.id, commentId)}
                     onAddReply={(commentId, note, requester) =>
                       handleAddReply(req.id, commentId, note, requester)
@@ -1018,7 +1032,6 @@ export function SongRequestSection() {
                     onToggleReplyLike={(commentId, replyId) =>
                       handleToggleReplyLike(req.id, commentId, replyId)
                     }
-                    likingKeys={likingKeys}
                     trackId={req.id}
                     clientId={clientId}
                     editingCommentKey={editingCommentKey}
@@ -1121,7 +1134,6 @@ function RequestCard({
   submittingReplyKey,
   onToggleCommentLike,
   onToggleReplyLike,
-  likingKeys,
   trackId,
   clientId,
   editingCommentKey,
@@ -1129,7 +1141,6 @@ function RequestCard({
   onStartEditComment,
   onCancelEditComment,
   onSaveEditComment,
-  voteBusy,
   editingReplyKey,
   savingReplyKey,
   onStartEditReply,
@@ -1148,7 +1159,6 @@ function RequestCard({
   submittingReplyKey: string | null;
   onToggleCommentLike: (commentId: string) => void;
   onToggleReplyLike: (commentId: string, replyId: string) => void;
-  likingKeys: Set<string>;
   trackId: number;
   clientId: string;
   editingCommentKey: string | null;
@@ -1166,7 +1176,6 @@ function RequestCard({
     note: string,
     requester: string
   ) => void;
-  voteBusy?: boolean;
 }) {
   const commentCount = request.comments?.length ?? 0;
   const trackPrefix = `${trackId}:`;
@@ -1259,13 +1268,13 @@ function RequestCard({
         <button
           type="button"
           onClick={onVote}
-          disabled={voteBusy || (hasParticipated && !myVote)}
+          disabled={hasParticipated && !myVote}
           className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 transition-all duration-150 hover:opacity-80 disabled:opacity-40"
           style={{
             border: voteHighlight ? "1px solid rgba(255,159,212,0.5)" : "1px solid rgba(255,255,255,0.08)",
             background: voteHighlight ? "rgba(255,159,212,0.08)" : "transparent",
             minWidth: 44,
-            cursor: voteBusy || (hasParticipated && !myVote) ? "not-allowed" : "pointer",
+            cursor: hasParticipated && !myVote ? "not-allowed" : "pointer",
           }}
           title={voteTitle}
         >
@@ -1318,10 +1327,6 @@ function RequestCard({
                   replyBusy={submittingReplyKey === `${request.id}:${cmt.commentId}`}
                   onToggleCommentLike={() => onToggleCommentLike(cmt.commentId)}
                   onToggleReplyLike={(replyId) => onToggleReplyLike(cmt.commentId, replyId)}
-                  commentLikeBusy={likingKeys.has(`c:${trackId}:${cmt.commentId}`)}
-                  replyLikeBusy={(replyId) =>
-                    likingKeys.has(`r:${trackId}:${cmt.commentId}:${replyId}`)
-                  }
                   isEditing={editingCommentKey === `${trackId}:${cmt.commentId}`}
                   editBusy={savingCommentKey === `${trackId}:${cmt.commentId}`}
                   onStartEdit={() => onStartEditComment(cmt.commentId)}
@@ -1358,8 +1363,6 @@ function CommentItem({
   replyBusy,
   onToggleCommentLike,
   onToggleReplyLike,
-  commentLikeBusy,
-  replyLikeBusy,
   isEditing,
   editBusy,
   onStartEdit,
@@ -1382,8 +1385,6 @@ function CommentItem({
   replyBusy: boolean;
   onToggleCommentLike: () => void;
   onToggleReplyLike: (replyId: string) => void;
-  commentLikeBusy: boolean;
-  replyLikeBusy: (replyId: string) => boolean;
   isEditing: boolean;
   editBusy: boolean;
   onStartEdit: () => void;
@@ -1500,7 +1501,6 @@ function CommentItem({
           <LikeButton
             count={commentLikeCount}
             liked={commentLiked}
-            busy={commentLikeBusy}
             onToggle={onToggleCommentLike}
           />
           {isOwn && (
@@ -1546,7 +1546,6 @@ function CommentItem({
               }
               onDelete={() => onDeleteReply(reply.replyId)}
               onToggleLike={() => onToggleReplyLike(reply.replyId)}
-              likeBusy={replyLikeBusy(reply.replyId)}
             />
           ))}
         </div>
@@ -1621,7 +1620,6 @@ function ReplyItem({
   onSaveEdit,
   onDelete,
   onToggleLike,
-  likeBusy,
 }: {
   reply: Reply;
   clientId: string;
@@ -1632,7 +1630,6 @@ function ReplyItem({
   onSaveEdit: (note: string, requester: string) => void;
   onDelete: () => void;
   onToggleLike: () => void;
-  likeBusy: boolean;
 }) {
   const [editName, setEditName] = useState(reply.requester);
   const [editNote, setEditNote] = useState(reply.note);
@@ -1718,7 +1715,6 @@ function ReplyItem({
           <LikeButton
             count={replyLikeCount}
             liked={replyLiked}
-            busy={likeBusy}
             onToggle={onToggleLike}
             compact
           />
@@ -1753,13 +1749,11 @@ function ReplyItem({
 function LikeButton({
   count,
   liked,
-  busy,
   onToggle,
   compact,
 }: {
   count: number;
   liked: boolean;
-  busy: boolean;
   onToggle: () => void;
   compact?: boolean;
 }) {
@@ -1769,9 +1763,8 @@ function LikeButton({
     <button
       type="button"
       onClick={onToggle}
-      disabled={busy}
       title={liked ? UNLIKE_TITLE : LIKE_TITLE}
-      className="inline-flex flex-col items-center justify-center gap-0.5 transition-all hover:scale-105 disabled:opacity-40 disabled:hover:scale-100"
+      className="inline-flex flex-col items-center justify-center gap-0.5 transition-all hover:scale-105"
       style={{
         minWidth: compact ? 36 : 42,
         padding: compact ? "4px 6px" : "6px 8px",

@@ -12,7 +12,8 @@
     "sync:edge": "node scripts/sync-edge-function.mjs",
     "fix:duplicate-votes": "node scripts/fix-duplicate-votes.mjs",
     "deploy:edge": "node scripts/sync-edge-function.mjs && node scripts/deploy-edge.mjs",
-    "db:kv-policies": "node scripts/apply-kv-policies.mjs"
+    "db:kv-policies": "node scripts/apply-kv-policies.mjs",
+    "setup:supabase": "node scripts/setup-supabase-cli.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
