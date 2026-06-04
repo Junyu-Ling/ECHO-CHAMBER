@@ -14,6 +14,9 @@ import {
 
 export const SUPABASE_REQUESTS = `https://${projectId}.supabase.co/functions/v1/make-server-2914ec93/requests`;
 
+const WRITE_PATH_KEY = "void_echo_write_path";
+type WritePath = "vercel" | "db" | "edge";
+
 export function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -28,8 +31,49 @@ export function getAuthHeaders(): Record<string, string> {
 const SETUP_HINT =
   "请二选一：① Supabase SQL Editor 执行 pnpm db:kv-policies 里的 SQL；② 终端执行 supabase login 后 pnpm deploy:edge";
 
+function vercelApiBase(): string | null {
+  if (typeof window === "undefined") return null;
+  return `${window.location.origin}/api/requests`;
+}
+
+function preferVercelApi(): boolean {
+  return import.meta.env.PROD || import.meta.env.VITE_USE_VERCEL_API === "true";
+}
+
+function getCachedWritePath(): WritePath | null {
+  if (typeof window === "undefined") return null;
+  const v = sessionStorage.getItem(WRITE_PATH_KEY);
+  return v === "vercel" || v === "db" || v === "edge" ? v : null;
+}
+
+function cacheWritePath(path: WritePath) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(WRITE_PATH_KEY, path);
+}
+
+function writePathOrder(): WritePath[] {
+  const cached = getCachedWritePath();
+  const all: WritePath[] = preferVercelApi()
+    ? ["vercel", "db", "edge"]
+    : ["db", "edge"];
+  if (!cached) return all;
+  return [cached, ...all.filter((p) => p !== cached)];
+}
+
 async function parseJson(res: Response) {
   return res.json().catch(() => ({}));
+}
+
+async function listViaVercel(): Promise<SongRequest[]> {
+  const base = vercelApiBase();
+  if (!base) throw new Error("No Vercel API");
+  const res = await fetch(base, { headers: getAuthHeaders() });
+  const data = await parseJson(res);
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || `Vercel API ${res.status}`);
+  }
+  const list = (data.data as SongRequest[]) || [];
+  return list.filter((r) => r?.song && Array.isArray(r.comments) && r.comments.length > 0);
 }
 
 async function listViaEdge(): Promise<SongRequest[]> {
@@ -43,16 +87,71 @@ async function listViaEdge(): Promise<SongRequest[]> {
 }
 
 export async function fetchAllRequests(): Promise<SongRequest[]> {
-  try {
-    const fromDb = await listRequestsFromDb();
-    if (fromDb.length > 0) return fromDb;
-  } catch (err) {
-    console.warn("Direct DB list failed:", err);
+  const order: Array<"vercel" | "db" | "edge"> = preferVercelApi()
+    ? ["vercel", "db", "edge"]
+    : ["db", "edge"];
+
+  for (const path of order) {
+    try {
+      if (path === "vercel") return await listViaVercel();
+      if (path === "db") {
+        const fromDb = await listRequestsFromDb();
+        if (fromDb.length > 0) return fromDb;
+        continue;
+      }
+      return await listViaEdge();
+    } catch (err) {
+      console.warn(`fetchAllRequests via ${path} failed:`, err);
+    }
   }
-  return listViaEdge();
+  return [];
 }
 
-/** 统一：先写 Supabase 数据库（与 Realtime 同源） */
+async function persistViaVercel(body: Record<string, unknown>) {
+  const base = vercelApiBase();
+  if (!base) throw new Error("No Vercel API");
+
+  const action = body.action as string | undefined;
+  const id = body.id;
+  const commentId = body.commentId;
+  const ownerId = body.ownerId;
+
+  let url = base;
+  let method = "POST";
+  let payload: Record<string, unknown> = body;
+
+  if (action === "addReply") {
+    url = `${base}/${id}/comments/${commentId}/replies`;
+    payload = { reply: body.reply };
+  } else if (action === "toggleCommentLike") {
+    url = `${base}/${id}/comments/${commentId}/like`;
+    payload = { ownerId };
+  } else if (action === "toggleReplyLike") {
+    url = `${base}/${id}/comments/${commentId}/replies/${body.replyId}/like`;
+    payload = { ownerId };
+  } else if (action === "deleteReply") {
+    method = "DELETE";
+    url = `${base}/${id}/comments/${commentId}/replies/${body.replyId}`;
+    payload = { ownerId };
+  } else if (action === "deleteComment") {
+    method = "DELETE";
+    url = `${base}/${id}/comments/${commentId}`;
+    payload = { ownerId };
+  }
+
+  const res = await fetch(url, {
+    method,
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson(res);
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || `Vercel API failed (${res.status})`);
+  }
+  return data;
+}
+
+/** 浏览器直连 kv_store（需 SQL 策略） */
 async function persistToDatabase(body: Record<string, unknown>) {
   const action = body.action as string | undefined;
 
@@ -119,11 +218,24 @@ async function persistToDatabase(body: Record<string, unknown>) {
     );
     return { success: true, data };
   }
+  if (action === "editReply") {
+    const data = await updateReplyInDb(
+      body.id as number,
+      body.commentId as string,
+      body.replyId as string,
+      body.ownerId as string,
+      {
+        note: body.note as string,
+        requester: body.requester as string,
+      }
+    );
+    return { success: true, data };
+  }
 
   throw new Error("Unknown action");
 }
 
-/** 备用：旧版 Edge API（未执行 SQL 时，仅投票/留言可走这条） */
+/** Edge Function 备用 */
 async function persistViaEdge(body: Record<string, unknown>) {
   const action = body.action as string | undefined;
 
@@ -140,54 +252,10 @@ async function persistViaEdge(body: Record<string, unknown>) {
     return data;
   }
 
-  const id = body.id;
-  const commentId = body.commentId;
-  const ownerId = body.ownerId;
-
-  let url = SUPABASE_REQUESTS;
-  let method = "POST";
-  let payload: Record<string, unknown> = { ownerId };
-
-  if (action === "addReply") {
-    url = `${SUPABASE_REQUESTS}/${id}/comments/${commentId}/replies`;
-    payload = { reply: body.reply };
-  } else if (action === "toggleCommentLike") {
-    url = `${SUPABASE_REQUESTS}/${id}/comments/${commentId}/like`;
-  } else if (action === "toggleReplyLike") {
-    url = `${SUPABASE_REQUESTS}/${id}/comments/${commentId}/replies/${body.replyId}/like`;
-  } else if (action === "deleteReply") {
-    method = "DELETE";
-    url = `${SUPABASE_REQUESTS}/${id}/comments/${commentId}/replies/${body.replyId}`;
-  } else if (action === "deleteComment") {
-    method = "DELETE";
-    url = `${SUPABASE_REQUESTS}/${id}/comments/${commentId}`;
-  } else if (action === "editComment") {
-    payload = {
-      action: "editComment",
-      id,
-      commentId,
-      ownerId,
-      note: body.note,
-      requester: body.requester,
-    };
-  } else if (action === "editReply") {
-    payload = {
-      action: "editReply",
-      id,
-      commentId,
-      replyId: body.replyId,
-      ownerId,
-      note: body.note,
-      requester: body.requester,
-    };
-  } else {
-    throw new Error("Unknown action");
-  }
-
-  const res = await fetch(url, {
-    method,
+  const res = await fetch(SUPABASE_REQUESTS, {
+    method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   const data = await parseJson(res);
   if (!res.ok || !data.success) {
@@ -196,30 +264,38 @@ async function persistViaEdge(body: Record<string, unknown>) {
   return data;
 }
 
+async function persistByPath(path: WritePath, body: Record<string, unknown>) {
+  if (path === "vercel") return persistViaVercel(body);
+  if (path === "db") return persistToDatabase(body);
+  return persistViaEdge(body);
+}
+
 /**
- * 投票 / 点赞 / 回复 / 删除 —— 同一套逻辑：
- * 1. 优先写入 kv_store（需 SQL 策略，执行一次即可）
- * 2. 失败则回退 Edge（点赞回复需 deploy:edge 更新函数后才可用）
+ * 写入：记住上次成功的通道，避免每次先等失败的直连再回退 Edge。
+ * 线上优先 Vercel /api（Service Role，最快）。
  */
 export async function postRequestsBody(body: Record<string, unknown>) {
-  try {
-    return await persistToDatabase(body);
-  } catch (dbErr) {
-    const dbMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+  const errors: string[] = [];
+
+  for (const path of writePathOrder()) {
     try {
-      return await persistViaEdge(body);
-    } catch {
-      if (dbMsg.includes("row-level security") || dbMsg.includes("数据库未开放")) {
-        throw new Error(`${dbMsg}。${SETUP_HINT}`);
-      }
-      if (body.action) {
-        throw new Error(
-          `点赞/回复需要更新 Edge 或执行 SQL。${SETUP_HINT}。原始错误：${dbMsg}`
-        );
-      }
-      throw new Error(dbMsg);
+      const result = await persistByPath(path, body);
+      cacheWritePath(path);
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`${path}: ${msg}`);
     }
   }
+
+  const combined = errors.join(" | ");
+  if (combined.includes("row-level security") || combined.includes("数据库未开放")) {
+    throw new Error(`${combined}。${SETUP_HINT}`);
+  }
+  if (body.action) {
+    throw new Error(`操作失败。${SETUP_HINT}。${combined}`);
+  }
+  throw new Error(combined || "保存失败");
 }
 
 export async function deleteCommentViaApi(

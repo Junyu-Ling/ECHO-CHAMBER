@@ -95,9 +95,13 @@ function mergeComments(local: Comment[], remote: Comment[]): Comment[] {
 export function mergeTrack(
   local: SongRequest,
   remote: SongRequest,
-  pending?: PendingEditsMap
+  pending?: PendingEditsMap,
+  optimisticUntil?: number
 ): SongRequest {
   const localNorm = normalizeRequest(local);
+  if (optimisticUntil && Date.now() < optimisticUntil) {
+    return applyPendingCommentEdits(localNorm, pending);
+  }
   const remoteNorm = normalizeRequest(remote);
   const remoteNewer = trackTimestamp(remoteNorm) >= trackTimestamp(localNorm);
   const base = remoteNewer ? remoteNorm : localNorm;
@@ -115,7 +119,8 @@ export function mergeTrack(
 export function mergeRequestsList(
   prev: SongRequest[],
   incoming: SongRequest[],
-  pending?: PendingEditsMap
+  pending?: PendingEditsMap,
+  optimisticUntilByTrack?: Map<number, number>
 ) {
   const prevById = new Map(prev.map((r) => [r.id, r]));
   const incomingIds = new Set<number>();
@@ -125,7 +130,12 @@ export function mergeRequestsList(
     incomingIds.add(normalized.id);
     const local = prevById.get(normalized.id);
     if (!local) return applyPendingCommentEdits(normalized, pending);
-    return mergeTrack(local, normalized, pending);
+    return mergeTrack(
+      local,
+      normalized,
+      pending,
+      optimisticUntilByTrack?.get(normalized.id)
+    );
   });
 
   const localOnly = prev
@@ -137,9 +147,13 @@ export function mergeRequestsList(
 export function applyTrackFromRemote(
   prev: SongRequest[],
   remote: SongRequest,
-  pending?: PendingEditsMap
+  pending?: PendingEditsMap,
+  optimisticUntilByTrack?: Map<number, number>
 ) {
   const normalized = normalizeRequest(remote);
+  const until = optimisticUntilByTrack?.get(normalized.id);
+  if (until && Date.now() < until) return prev;
+
   const idx = prev.findIndex((r) => r.id === normalized.id);
   if (idx < 0) {
     if (!normalized.comments?.length) return prev;
@@ -149,7 +163,7 @@ export function applyTrackFromRemote(
     return prev.filter((r) => r.id !== normalized.id);
   }
   const next = [...prev];
-  next[idx] = mergeTrack(prev[idx], normalized, pending);
+  next[idx] = mergeTrack(prev[idx], normalized, pending, until);
   return next;
 }
 

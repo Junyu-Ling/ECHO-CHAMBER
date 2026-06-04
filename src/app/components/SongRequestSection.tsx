@@ -54,7 +54,6 @@ import {
   applyTrackFromRemote,
   mergeRequestsList,
   mergeTrack,
-  serverCommentMatchesEdit,
   type PendingCommentEdit,
 } from "../lib/mergeRequestTracks";
 import { stopPreviewIf, subscribePreview, togglePreview } from "../lib/previewAudio";
@@ -130,6 +129,11 @@ export function SongRequestSection() {
   const fetchGenerationRef = useRef(0);
   const mutatingCountRef = useRef(0);
   const pendingEditsRef = useRef(new Map<string, PendingCommentEdit>());
+  const optimisticUntilRef = useRef(new Map<number, number>());
+
+  const markTrackOptimistic = (trackId: number, ms = 6000) => {
+    optimisticUntilRef.current.set(trackId, Date.now() + ms);
+  };
 
   const beginMutation = () => {
     mutatingCountRef.current += 1;
@@ -168,7 +172,12 @@ export function SongRequestSection() {
         const list = await fetchAllRequests();
         if (cancelled || gen !== fetchGenerationRef.current) return;
         setRequests((prev) =>
-          mergeRequestsList(prev, normalizeRequestsList(list), pendingEditsRef.current)
+          mergeRequestsList(
+            prev,
+            normalizeRequestsList(list),
+            pendingEditsRef.current,
+            optimisticUntilRef.current
+          )
         );
       } catch (err) {
         console.error("Network or parsing error fetching requests:", err);
@@ -213,7 +222,12 @@ export function SongRequestSection() {
 
             if (newReq) {
               setRequests((prev) =>
-                applyTrackFromRemote(prev, newReq as SongRequest, pendingEditsRef.current)
+                applyTrackFromRemote(
+                  prev,
+                  newReq as SongRequest,
+                  pendingEditsRef.current,
+                  optimisticUntilRef.current
+                )
               );
             }
           } else if (payload.eventType === "DELETE") {
@@ -251,7 +265,12 @@ export function SongRequestSection() {
       const list = await fetchAllRequests();
       if (gen !== fetchGenerationRef.current) return;
       setRequests((prev) =>
-        mergeRequestsList(prev, normalizeRequestsList(list), pendingEditsRef.current)
+        mergeRequestsList(
+          prev,
+          normalizeRequestsList(list),
+          pendingEditsRef.current,
+          optimisticUntilRef.current
+        )
       );
     } catch {
       /* ignore */
@@ -332,47 +351,35 @@ export function SongRequestSection() {
       updatedAt: Date.now(),
     };
     pendingEditsRef.current.set(pendingKey, pendingEdit);
+    markTrackOptimistic(trackId);
 
     applyCommentTextUpdate(trackId, commentId, { note: trimmed, requester: name });
     setEditingCommentKey(null);
-    setSavingCommentKey(saveKey);
-    beginMutation();
-    try {
-      const data = await editCommentViaApi(trackId, commentId, clientId, {
-        note: trimmed,
-        requester: name,
-      });
-      if (data.data) {
-        const serverTrack = data.data as SongRequest;
-        if (
-          !serverCommentMatchesEdit(serverTrack, commentId, {
-            note: trimmed,
-            requester: name,
-          })
-        ) {
-          throw new Error(
-            "保存未同步到服务器，请刷新后重试或执行 pnpm db:kv-policies / pnpm deploy:edge"
-          );
-        }
-        mergeTrackFromServer(trackId, serverTrack);
-      } else {
-        throw new Error("服务器未返回更新后的数据");
+
+    void (async () => {
+      setSavingCommentKey(saveKey);
+      beginMutation();
+      try {
+        await editCommentViaApi(trackId, commentId, clientId, {
+          note: trimmed,
+          requester: name,
+        });
+      } catch (err) {
+        console.error("Error editing comment:", err);
+        pendingEditsRef.current.delete(pendingKey);
+        setRequests(snapshot);
+        const msg = err instanceof Error ? err.message : "";
+        alert(msg || "保存失败，请稍后重试");
+      } finally {
+        setSavingCommentKey(null);
+        endMutation();
+        window.setTimeout(() => {
+          if (pendingEditsRef.current.get(pendingKey) === pendingEdit) {
+            pendingEditsRef.current.delete(pendingKey);
+          }
+        }, 8000);
       }
-    } catch (err) {
-      console.error("Error editing comment:", err);
-      pendingEditsRef.current.delete(pendingKey);
-      setRequests(snapshot);
-      const msg = err instanceof Error ? err.message : "";
-      alert(msg || "保存失败，请稍后重试");
-    } finally {
-      setSavingCommentKey(null);
-      endMutation();
-      window.setTimeout(() => {
-        if (pendingEditsRef.current.get(pendingKey) === pendingEdit) {
-          pendingEditsRef.current.delete(pendingKey);
-        }
-      }, 8000);
-    }
+    })();
   };
 
   const handleDeleteComment = async (trackId: number, commentId: string) => {
@@ -395,9 +402,13 @@ export function SongRequestSection() {
   };
 
   const mergeTrackFromServer = (trackId: number, data: SongRequest) => {
+    const until = optimisticUntilRef.current.get(trackId);
+    if (until && Date.now() < until) return;
     setRequests((prev) =>
       prev.map((r) =>
-        r.id === trackId ? mergeTrack(r, data, pendingEditsRef.current) : r
+        r.id === trackId
+          ? mergeTrack(r, data, pendingEditsRef.current, until)
+          : r
       )
     );
   };
@@ -471,6 +482,7 @@ export function SongRequestSection() {
     const likeKey = `c:${trackId}:${commentId}`;
     if (likeInFlightRef.current.has(likeKey)) return;
     likeInFlightRef.current.add(likeKey);
+    markTrackOptimistic(trackId);
 
     const snapshot = requests;
     const now = Date.now();
@@ -519,6 +531,7 @@ export function SongRequestSection() {
     const likeKey = `r:${trackId}:${commentId}:${replyId}`;
     if (likeInFlightRef.current.has(likeKey)) return;
     likeInFlightRef.current.add(likeKey);
+    markTrackOptimistic(trackId);
 
     const snapshot = requests;
     const now = Date.now();
@@ -602,28 +615,31 @@ export function SongRequestSection() {
     if (savingReplyKey === saveKey) return;
 
     const snapshot = requests;
+    markTrackOptimistic(trackId);
     applyReplyTextUpdate(trackId, commentId, replyId, {
       note: trimmed,
       requester: name,
     });
     setEditingReplyKey(null);
-    setSavingReplyKey(saveKey);
-    beginMutation();
-    try {
-      const data = await editReplyViaApi(trackId, commentId, replyId, clientId, {
-        note: trimmed,
-        requester: name,
-      });
-      if (data.data) mergeTrackFromServer(trackId, data.data as SongRequest);
-    } catch (err) {
-      console.error("Error editing reply:", err);
-      setRequests(snapshot);
-      const msg = err instanceof Error ? err.message : "";
-      alert(msg || "保存失败，请稍后重试");
-    } finally {
-      setSavingReplyKey(null);
-      endMutation();
-    }
+
+    void (async () => {
+      setSavingReplyKey(saveKey);
+      beginMutation();
+      try {
+        await editReplyViaApi(trackId, commentId, replyId, clientId, {
+          note: trimmed,
+          requester: name,
+        });
+      } catch (err) {
+        console.error("Error editing reply:", err);
+        setRequests(snapshot);
+        const msg = err instanceof Error ? err.message : "";
+        alert(msg || "保存失败，请稍后重试");
+      } finally {
+        setSavingReplyKey(null);
+        endMutation();
+      }
+    })();
   };
 
   const handleDeleteReply = async (trackId: number, commentId: string, replyId: string) => {
@@ -676,6 +692,7 @@ export function SongRequestSection() {
     const hasParticipated = hasParticipatedOnTrack(existingReq.comments, clientId);
 
     if (hasParticipated && myVote) {
+      markTrackOptimistic(id);
       const voteSnapshot = requests;
       applyCommentRemoval(id, myVote.commentId);
       setLocalVotedIds((prev) => {
@@ -715,6 +732,7 @@ export function SongRequestSection() {
       likedBy: [],
     });
 
+    markTrackOptimistic(id);
     const voteSnapshot = requests;
     const now = Date.now();
     setRequests((prev) =>
@@ -789,7 +807,7 @@ export function SongRequestSection() {
       comments: commentsToSubmit,
     };
 
-    // Optimistic UI
+    markTrackOptimistic(trackId);
     setRequests((prev) => {
       const existing = prev.find((r) => r.id === trackId);
       if (existing) {
@@ -1210,7 +1228,7 @@ function RequestCard({
     >
       {/* Popularity bar */}
       <div
-        className="absolute left-0 top-0 bottom-0 transition-all duration-500"
+        className="absolute left-0 top-0 bottom-0 transition-all duration-150"
         style={{
           width: `${pct}%`,
           background: "rgba(255,159,212,0.04)",
@@ -1404,7 +1422,7 @@ function CommentItem({
   const replies = comment.replies || [];
   const commentLiked = isLikedBy(comment.likedBy, clientId);
   const commentLikeCount = (comment.likedBy || []).length;
-  const isOwn = comment.ownerId === clientId;
+  const isOwn = comment.ownerId === clientId || !comment.ownerId;
   const canEdit = isOwn;
 
   useEffect(() => {
@@ -1633,7 +1651,7 @@ function ReplyItem({
 }) {
   const [editName, setEditName] = useState(reply.requester);
   const [editNote, setEditNote] = useState(reply.note);
-  const isOwn = reply.ownerId === clientId;
+  const isOwn = reply.ownerId === clientId || !reply.ownerId;
   const replyLiked = isLikedBy(reply.likedBy, clientId);
   const replyLikeCount = (reply.likedBy || []).length;
 
