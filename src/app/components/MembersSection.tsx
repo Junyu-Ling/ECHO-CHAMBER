@@ -120,6 +120,7 @@ const members = [
     roleEn: "中国部 G10C2",
     bio: "在琴键上飞，在后台忙，哪里需要就往哪里钻的乐队万能补丁",
     photo: baiQianhePhoto,
+    photoPosition: "center 30%",
   },
   {
     id: 13,
@@ -129,6 +130,7 @@ const members = [
     roleEn: "中国部 G10C1",
     bio: "声音极具穿透力与爆发感，舞台中央闪耀的绝对核心",
     photo: huangZiyiPhoto,
+    photoPosition: "center 20%",
   }
 ];
 
@@ -170,6 +172,12 @@ function MemberCard({ member }: { member: (typeof members)[number] }) {
           src={member.photo}
           alt={member.name}
           className="relative w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          style={{
+            objectPosition:
+              "photoPosition" in member && member.photoPosition
+                ? member.photoPosition
+                : "center center",
+          }}
           loading="lazy"
           decoding="async"
         />

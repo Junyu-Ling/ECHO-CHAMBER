@@ -83,25 +83,102 @@ for (const [id, videoPath] of videoPosterSources) {
   await extractVideoPoster(videoPath, path.join(postersDir, `video-${id}.webp`));
 }
 
+const MEMBER_TARGET_W = 960;
+const MEMBER_TARGET_H = 1280;
+
+/** @typedef {{ position?: string; maxUpscale?: number; sharpen?: boolean }} MemberOpts */
+
+/**
+ * Export member portrait WebP: smart crop, capped upscale, mild sharpen.
+ * @param {string} inputPath
+ * @param {string} outputPath
+ * @param {MemberOpts} [opts]
+ */
+async function processMemberPhoto(inputPath, outputPath, opts = {}) {
+  const position = opts.position ?? "attention";
+  const applySharpen = opts.sharpen !== false;
+
+  const meta = await sharp(inputPath).metadata();
+  const srcW = meta.width ?? 0;
+  const srcH = meta.height ?? 0;
+  const maxDim = Math.max(srcW, srcH);
+
+  const aspect = 3 / 4;
+  let cropW = srcW;
+  let cropH = srcH;
+  if (srcW / srcH > aspect) {
+    cropH = srcH;
+    cropW = Math.round(srcH * aspect);
+  } else {
+    cropW = srcW;
+    cropH = Math.round(srcW / aspect);
+  }
+
+  let maxUpscale = opts.maxUpscale;
+  if (maxUpscale == null) {
+    if (maxDim >= 1000) maxUpscale = 8;
+    else if (maxDim >= 700) maxUpscale = 1.6;
+    else if (maxDim >= 480) maxUpscale = 1.45;
+    else maxUpscale = 2;
+  }
+
+  const scale = Math.min(
+    MEMBER_TARGET_W / cropW,
+    MEMBER_TARGET_H / cropH,
+    maxUpscale
+  );
+  const outW = Math.max(1, Math.round(Math.min(MEMBER_TARGET_W, cropW * scale)));
+  const outH = Math.max(1, Math.round(Math.min(MEMBER_TARGET_H, cropH * scale)));
+
+  if (maxDim < 480) {
+    console.warn(
+      `[media] ${path.basename(inputPath)} is only ${srcW}×${srcH}px — replace with ≥800px-wide original for best clarity`
+    );
+  } else if (scale >= maxUpscale - 0.01) {
+    console.warn(
+      `[media] ${path.basename(inputPath)} (${srcW}×${srcH}) capped at ${outW}×${outH} — send a higher-resolution photo if possible`
+    );
+  }
+
+  let pipeline = sharp(inputPath)
+    .rotate()
+    .resize(outW, outH, {
+      fit: "cover",
+      position,
+      kernel: sharp.kernel.lanczos3,
+    });
+
+  if (applySharpen) {
+    pipeline = pipeline.sharpen({ sigma: maxDim < 480 ? 0.9 : 0.65, m1: 1, m2: 0.35 });
+  }
+
+  await pipeline
+    .webp({ quality: maxDim < 480 ? 96 : 92, effort: 6, smartSubsample: true })
+    .toFile(outputPath);
+
+  console.log(`[media] ${path.basename(outputPath)} ← ${srcW}×${srcH} → ${outW}×${outH}`);
+}
+
 const memberSources = [
-  ["shen-xinyu.png", "shen-xinyu.webp"],
-  ["richard.png", "richard.webp"],
-  ["ellis.png", "ellis.webp"],
-  ["bai-qianhe.png", "bai-qianhe.webp"],
-  ["gu-chenyang.png", "gu-chenyang.webp"],
-  ["huang-ziyi.png", "huang-ziyi.webp"],
+  ["shen-xinyu.png", "shen-xinyu.webp", {}],
+  ["richard.png", "richard.webp", {}],
+  ["ellis.png", "ellis.webp", {}],
+  ["bai-qianhe.png", "bai-qianhe.webp", { position: "top", maxUpscale: 1.65 }],
+  ["gu-chenyang.png", "gu-chenyang.webp", {}],
+  ["huang-ziyi.png", "huang-ziyi.webp", { position: "attention", maxUpscale: 2.2 }],
 ];
 
-for (const [input, output] of memberSources) {
+for (const [input, output, opts] of memberSources) {
   const inputPath = path.join(memberSourcesDir, input);
   if (!existsSync(inputPath)) {
     console.warn(`Skip ${output}: place source at scripts/member-sources/${input}`);
     continue;
   }
-  await sharp(inputPath)
-    .resize(800, 1067, { fit: "cover", position: "centre" })
-    .webp({ quality: 85 })
-    .toFile(path.join(assetsDir, "members", output));
+  await processMemberPhoto(
+    inputPath,
+    path.join(assetsDir, "members", output),
+    opts
+  );
 }
 
 console.log("Generated hero, video frame posters, and member webp assets");

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Music, ChevronUp, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2, Reply as ReplyIcon, Heart, Pencil } from "lucide-react";
+import { Music, ChevronUp, ChevronDown, Clock, Flame, Send, Play, Pause, Square, Loader2, Trash2, Reply as ReplyIcon, Heart, Pencil } from "lucide-react";
 import { SectionHeader } from "./SectionHeader";
 import { MusicSearchInput, TrackResult } from "./MusicSearchInput";
 import { supabase } from "../supabaseClient";
@@ -36,6 +36,8 @@ import {
   REPLY_NAME_PLACEHOLDER,
   REPLY_PLACEHOLDER,
   REPLY_SUBMIT,
+  COMMENTS_COLLAPSE,
+  commentsExpandLabel,
 } from "../copy/replyCopy";
 import { LIKE_BTN, LIKE_TITLE, UNLIKE_TITLE } from "../copy/likeCopy";
 import {
@@ -1156,6 +1158,19 @@ function RequestCard({
   ) => void;
   voteBusy?: boolean;
 }) {
+  const commentCount = request.comments?.length ?? 0;
+  const trackPrefix = `${trackId}:`;
+  const isInteractingOnTrack =
+    (replyingKey?.startsWith(trackPrefix) ?? false) ||
+    (editingCommentKey?.startsWith(trackPrefix) ?? false) ||
+    (editingReplyKey?.startsWith(trackPrefix) ?? false);
+
+  const [commentsExpanded, setCommentsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (isInteractingOnTrack) setCommentsExpanded(true);
+  }, [isInteractingOnTrack]);
+
   const pct = Math.round((request.votes / maxVotes) * 100);
   const hasParticipated = hasParticipatedOnTrack(request.comments, clientId);
   const myVote = findMyVoteComment(request.comments, clientId);
@@ -1261,43 +1276,61 @@ function RequestCard({
         </button>
       </div>
 
-      {/* Comments section attached below the song */}
-      {request.comments && request.comments.length > 0 && (
-        <div className="relative px-4 pb-4 pt-1 ml-[4.5rem] lg:ml-12 z-10 flex flex-col gap-2">
-          {request.comments.map((cmt) => (
-            <CommentItem
-              key={cmt.commentId}
-              comment={cmt}
-              clientId={clientId}
-              onDeleteComment={() => onDeleteComment(cmt.commentId)}
-              onAddReply={(note, requester) => onAddReply(cmt.commentId, note, requester)}
-              onDeleteReply={(replyId) => onDeleteReply(cmt.commentId, replyId)}
-              isReplying={replyingKey === `${request.id}:${cmt.commentId}`}
-              onToggleReply={() => onToggleReply(cmt.commentId)}
-              replyBusy={submittingReplyKey === `${request.id}:${cmt.commentId}`}
-              onToggleCommentLike={() => onToggleCommentLike(cmt.commentId)}
-              onToggleReplyLike={(replyId) => onToggleReplyLike(cmt.commentId, replyId)}
-              commentLikeBusy={likingKeys.has(`c:${trackId}:${cmt.commentId}`)}
-              replyLikeBusy={(replyId) =>
-                likingKeys.has(`r:${trackId}:${cmt.commentId}:${replyId}`)
-              }
-              isEditing={editingCommentKey === `${trackId}:${cmt.commentId}`}
-              editBusy={savingCommentKey === `${trackId}:${cmt.commentId}`}
-              onStartEdit={() => onStartEditComment(cmt.commentId)}
-              onCancelEdit={onCancelEditComment}
-              onSaveEdit={(note, requester) =>
-                onSaveEditComment(cmt.commentId, note, requester)
-              }
-              trackId={trackId}
-              editingReplyKey={editingReplyKey}
-              savingReplyKey={savingReplyKey}
-              onStartEditReply={(replyId) => onStartEditReply(cmt.commentId, replyId)}
-              onCancelEditReply={onCancelEditReply}
-              onSaveEditReply={(replyId, note, requester) =>
-                onSaveEditReply(cmt.commentId, replyId, note, requester)
-              }
+      {commentCount > 0 && (
+        <div className="relative z-10 ml-[4.5rem] lg:ml-12 px-4 pb-3">
+          <button
+            type="button"
+            onClick={() => setCommentsExpanded((open) => !open)}
+            className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider transition-colors hover:opacity-100 opacity-70"
+            style={{ color: "#FF9FD4" }}
+            aria-expanded={commentsExpanded}
+          >
+            <ChevronDown
+              size={12}
+              className="transition-transform duration-200"
+              style={{ transform: commentsExpanded ? "rotate(180deg)" : "rotate(0deg)" }}
             />
-          ))}
+            {commentsExpanded ? COMMENTS_COLLAPSE : commentsExpandLabel(commentCount)}
+          </button>
+
+          {commentsExpanded && (
+            <div className="mt-2 flex flex-col gap-2">
+              {request.comments!.map((cmt) => (
+                <CommentItem
+                  key={cmt.commentId}
+                  comment={cmt}
+                  clientId={clientId}
+                  onDeleteComment={() => onDeleteComment(cmt.commentId)}
+                  onAddReply={(note, requester) => onAddReply(cmt.commentId, note, requester)}
+                  onDeleteReply={(replyId) => onDeleteReply(cmt.commentId, replyId)}
+                  isReplying={replyingKey === `${request.id}:${cmt.commentId}`}
+                  onToggleReply={() => onToggleReply(cmt.commentId)}
+                  replyBusy={submittingReplyKey === `${request.id}:${cmt.commentId}`}
+                  onToggleCommentLike={() => onToggleCommentLike(cmt.commentId)}
+                  onToggleReplyLike={(replyId) => onToggleReplyLike(cmt.commentId, replyId)}
+                  commentLikeBusy={likingKeys.has(`c:${trackId}:${cmt.commentId}`)}
+                  replyLikeBusy={(replyId) =>
+                    likingKeys.has(`r:${trackId}:${cmt.commentId}:${replyId}`)
+                  }
+                  isEditing={editingCommentKey === `${trackId}:${cmt.commentId}`}
+                  editBusy={savingCommentKey === `${trackId}:${cmt.commentId}`}
+                  onStartEdit={() => onStartEditComment(cmt.commentId)}
+                  onCancelEdit={onCancelEditComment}
+                  onSaveEdit={(note, requester) =>
+                    onSaveEditComment(cmt.commentId, note, requester)
+                  }
+                  trackId={trackId}
+                  editingReplyKey={editingReplyKey}
+                  savingReplyKey={savingReplyKey}
+                  onStartEditReply={(replyId) => onStartEditReply(cmt.commentId, replyId)}
+                  onCancelEditReply={onCancelEditReply}
+                  onSaveEditReply={(replyId, note, requester) =>
+                    onSaveEditReply(cmt.commentId, replyId, note, requester)
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

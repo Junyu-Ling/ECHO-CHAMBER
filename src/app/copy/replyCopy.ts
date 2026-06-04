@@ -9,3 +9,7 @@ export const REPLY_EDIT_BTN = "\u7f16\u8f91\u56de\u590d";
 export const REPLY_EMPTY_ALERT = "\u8bf7\u5148\u8f93\u5165\u56de\u590d\u5185\u5bb9";
 export const REPLY_DEFAULT_NAME = "\u533f\u540d";
 export const REPLY_TIME_NOW = "\u521a\u521a";
+export const COMMENTS_COLLAPSE = "\u6536\u8d77\u7559\u8a00";
+export function commentsExpandLabel(count: number) {
+  return `\u5c55\u5f00 ${count} \u6761\u7559\u8a00`;
+}
