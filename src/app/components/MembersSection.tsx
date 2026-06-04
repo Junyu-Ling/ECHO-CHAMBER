@@ -133,7 +133,7 @@ const members = [
     roleEn: "中国部 G10C1",
     bio: "声音极具穿透力与爆发感，舞台中央闪耀的绝对核心",
     photo: huangZiyiPhoto,
-    photoPosition: "center 20%",
+    photoPosition: "center 28%",
   }
 ];
 
