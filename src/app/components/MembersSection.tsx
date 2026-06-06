@@ -98,7 +98,7 @@ const members = [
     roleEn: "中国部 G12C1",
     bio: "空灵的声音，像夜空中的星光，点缀在主旋律的每一个角落",
     photo: huYuqinPhoto,
-    photoPosition: "center 38%",
+    photoPosition: "center center",
   },
   {
     id: 9,
