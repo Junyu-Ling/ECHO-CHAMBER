@@ -11,6 +11,7 @@ import shenXinyuPhoto from "../../assets/members/shen-xinyu.webp";
 import ellisPhoto from "../../assets/members/ellis.webp";
 import gongLaoshiPhoto from "../../assets/members/gong-laoshi.webp";
 import liuYiyangPhoto from "../../assets/members/liu-yiyang.webp";
+import huYuqinPhoto from "../../assets/members/hu-yuqin.webp";
 import { ImageWithFallback } from "./ImageWithFallback";
 
 const members = [
@@ -96,7 +97,8 @@ const members = [
     role: "主唱 / 尤克里里",
     roleEn: "中国部 G12C1",
     bio: "空灵的声音，像夜空中的星光，点缀在主旋律的每一个角落",
-    photo: "https://images.unsplash.com/photo-1513097633097-329a3a64e0d4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMHlvdW5nJTIwZmVtYWxlJTIwc3RhZ2V8ZW58MXx8fHwxNzgwMzEzODA2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+    photo: huYuqinPhoto,
+    photoPosition: "center 38%",
   },
   {
     id: 9,
