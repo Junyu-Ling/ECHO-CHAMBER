@@ -154,15 +154,8 @@ async function persistViaVercel(body: Record<string, unknown>) {
     method = "DELETE";
     url = `${base}/${id}/comments/${commentId}`;
     payload = { ownerId };
-  } else if (action === "editComment") {
-    method = "PATCH";
-    url = `${base}/${id}/comments/${commentId}`;
-    payload = { ownerId, note: body.note, requester: body.requester };
-  } else if (action === "editReply") {
-    method = "PATCH";
-    url = `${base}/${id}/comments/${commentId}/replies/${body.replyId}`;
-    payload = { ownerId, note: body.note, requester: body.requester };
   }
+  // editComment / editReply：与点赞不同，走 POST /api/requests + action（Vercel 对 PATCH 子路径易 404）
 
   const res = await fetch(url, {
     method,

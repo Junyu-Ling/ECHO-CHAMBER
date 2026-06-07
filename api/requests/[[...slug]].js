@@ -51,6 +51,13 @@ export default async function handler(req, res) {
       return;
     }
 
+    // PATCH 兼容：部分客户端曾用 PATCH，统一转 postRequest
+    if (req.method === "PATCH" && slug.length === 0 && body.action) {
+      const { status, body: payload } = await postRequest(body);
+      res.status(status).json(payload);
+      return;
+    }
+
     if (
       req.method === "POST" &&
       slug.length === 4 &&
@@ -113,6 +120,15 @@ export default async function handler(req, res) {
       slug[3] === "replies"
     ) {
       const result = await editReply(slug[0], slug[2], slug[4], body.ownerId, {
+        note: body.note,
+        requester: body.requester,
+      });
+      res.status(200).json(result);
+      return;
+    }
+
+    if (req.method === "POST" && slug.length === 3 && slug[1] === "comments" && body.action === "editComment") {
+      const result = await editComment(slug[0], slug[2], body.ownerId, {
         note: body.note,
         requester: body.requester,
       });
