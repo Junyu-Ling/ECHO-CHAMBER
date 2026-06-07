@@ -6,11 +6,13 @@ import {
   deleteReply,
   toggleCommentLike,
   toggleReplyLike,
+  editComment,
+  editReply,
 } from "../lib/requests-logic.mjs";
 
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey");
 }
 
@@ -91,6 +93,29 @@ export default async function handler(req, res) {
 
     if (req.method === "DELETE" && slug.length === 5 && slug[3] === "replies") {
       const result = await deleteReply(slug[0], slug[2], slug[4], body.ownerId);
+      res.status(200).json(result);
+      return;
+    }
+
+    if (req.method === "PATCH" && slug.length === 3 && slug[1] === "comments") {
+      const result = await editComment(slug[0], slug[2], body.ownerId, {
+        note: body.note,
+        requester: body.requester,
+      });
+      res.status(200).json(result);
+      return;
+    }
+
+    if (
+      req.method === "PATCH" &&
+      slug.length === 5 &&
+      slug[1] === "comments" &&
+      slug[3] === "replies"
+    ) {
+      const result = await editReply(slug[0], slug[2], slug[4], body.ownerId, {
+        note: body.note,
+        requester: body.requester,
+      });
       res.status(200).json(result);
       return;
     }

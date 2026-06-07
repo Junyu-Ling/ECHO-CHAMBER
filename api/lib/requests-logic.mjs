@@ -28,12 +28,16 @@ function stamp(req) {
   return req;
 }
 
-function commentSortKey(c) {
+function commentRevision(c) {
+  if (typeof c.updatedAt === "number" && c.updatedAt > 0) return c.updatedAt;
+  if (typeof c.createdAt === "number" && c.createdAt > 0) return c.createdAt;
   const m = /^(\d{10,13})/.exec(c.commentId || "");
-  const fromId = m ? Number(m[1]) : 0;
-  return c.createdAt > 0 ? c.createdAt : fromId < 1e12 ? fromId * 1000 : fromId;
+  if (!m) return 0;
+  const n = Number(m[1]);
+  return n < 1e12 ? n * 1000 : n;
 }
 
+/** 同一 ownerId 仅保留一条：优先非投票留言，多条时保留最新（含编辑） */
 function dedupeOwnerComments(comments) {
   const withoutOwner = comments.filter((c) => !c.ownerId);
   const byOwner = new Map();
@@ -51,14 +55,14 @@ function dedupeOwnerComments(comments) {
     }
     const messages = list.filter((c) => c.isVote !== true);
     if (messages.length > 0) {
-      messages.sort((a, b) => commentSortKey(a) - commentSortKey(b));
+      messages.sort((a, b) => commentRevision(b) - commentRevision(a));
       kept.push(messages[0]);
       continue;
     }
-    const votes = [...list].sort((a, b) => commentSortKey(a) - commentSortKey(b));
+    const votes = [...list].sort((a, b) => commentRevision(b) - commentRevision(a));
     kept.push(votes[0]);
   }
-  return kept.sort((a, b) => commentSortKey(b) - commentSortKey(a));
+  return kept.sort((a, b) => commentRevision(b) - commentRevision(a));
 }
 
 export function normalizeRequest(req) {
@@ -208,8 +212,9 @@ export async function editReply(trackId, commentId, replyId, ownerId, patch) {
     time: new Date(createdAt).toISOString().slice(0, 16).replace("T", " "),
   });
   reqData.comments[idx] = comment;
-  await kv.kvSet(key, stamp(reqData));
-  return { success: true, data: normalizeRequest(reqData) };
+  const saved = normalizeRequest(reqData);
+  await kv.kvSet(key, stamp(saved));
+  return { success: true, data: saved };
 }
 
 export async function deleteReply(trackId, commentId, replyId, ownerId) {
@@ -235,10 +240,18 @@ export async function deleteComment(trackId, commentId, ownerId) {
   const reqData = await kv.kvGet(key);
   if (!reqData?.comments) throw Object.assign(new Error("Not found"), { status: 404 });
 
+  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  if (idx < 0) {
+    throw Object.assign(new Error("Comment not found"), { status: 404 });
+  }
+  const target = normalizeComment(reqData.comments[idx]);
+  try {
+    assertOwnerOrAssign(target, ownerId);
+  } catch {
+    throw Object.assign(new Error("Unauthorized or comment not found"), { status: 403 });
+  }
   const originalLen = reqData.comments.length;
-  reqData.comments = reqData.comments.filter(
-    (c) => !(c.commentId === commentId && c.ownerId === ownerId),
-  );
+  reqData.comments = reqData.comments.filter((c) => c.commentId !== commentId);
   if (reqData.comments.length === originalLen) {
     throw Object.assign(new Error("Unauthorized or comment not found"), { status: 403 });
   }
@@ -275,8 +288,9 @@ export async function editComment(trackId, commentId, ownerId, patch) {
   comment.isVote = wasVote ? note === "推荐了这首金曲" : false;
   comment.updatedAt = Date.now();
   reqData.comments[idx] = comment;
-  await kv.kvSet(key, stamp(reqData));
-  return { success: true, data: normalizeRequest(reqData) };
+  const saved = normalizeRequest(reqData);
+  await kv.kvSet(key, stamp(saved));
+  return { success: true, data: saved };
 }
 
 export async function postRequest(body) {

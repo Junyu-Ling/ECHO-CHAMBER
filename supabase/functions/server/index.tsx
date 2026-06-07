@@ -69,12 +69,13 @@ function stampReq(req: any) {
   return req;
 }
 
-function commentSortKey(c: any) {
+function commentRevision(c: any) {
+  if (typeof c.updatedAt === "number" && c.updatedAt > 0) return c.updatedAt;
   if (typeof c.createdAt === "number" && c.createdAt > 0) return c.createdAt;
   return inferTimestampFromId(c.commentId) ?? 0;
 }
 
-/** 同一 ownerId 仅保留一条：优先留言，否则最早投票 */
+/** 同一 ownerId 仅保留一条：优先非投票留言，多条时保留最新（含编辑） */
 function dedupeOwnerComments(comments: any[]) {
   const withoutOwner = comments.filter((c) => !c.ownerId);
   const byOwner = new Map<string, any[]>();
@@ -92,14 +93,14 @@ function dedupeOwnerComments(comments: any[]) {
     }
     const messages = list.filter((c) => c.isVote !== true);
     if (messages.length > 0) {
-      messages.sort((a, b) => commentSortKey(a) - commentSortKey(b));
+      messages.sort((a, b) => commentRevision(b) - commentRevision(a));
       kept.push(messages[0]);
       continue;
     }
-    const votes = [...list].sort((a, b) => commentSortKey(a) - commentSortKey(b));
+    const votes = [...list].sort((a, b) => commentRevision(b) - commentRevision(a));
     kept.push(votes[0]);
   }
-  return kept.sort((a, b) => commentSortKey(b) - commentSortKey(a));
+  return kept.sort((a, b) => commentRevision(b) - commentRevision(a));
 }
 
 function normalizeRequest(req: any) {
@@ -280,8 +281,9 @@ async function editReplyInStore(
     time: timeStr,
   });
   reqData.comments[idx] = comment;
-  await kv.set(key, stampReq(reqData));
-  return normalizeRequest(reqData);
+  const saved = normalizeRequest(reqData);
+  await kv.set(key, stampReq(saved));
+  return saved;
 }
 
 async function deleteCommentInStore(
@@ -340,8 +342,9 @@ async function editCommentInStore(
   comment.isVote = wasVote ? note === "推荐了这首金曲" : false;
   comment.updatedAt = Date.now();
   reqData.comments[idx] = comment;
-  await kv.set(key, stampReq(reqData));
-  return normalizeRequest(reqData);
+  const saved = normalizeRequest(reqData);
+  await kv.set(key, stampReq(saved));
+  return saved;
 }
 
 // Get all requests

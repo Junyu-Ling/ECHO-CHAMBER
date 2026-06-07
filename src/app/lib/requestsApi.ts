@@ -154,6 +154,14 @@ async function persistViaVercel(body: Record<string, unknown>) {
     method = "DELETE";
     url = `${base}/${id}/comments/${commentId}`;
     payload = { ownerId };
+  } else if (action === "editComment") {
+    method = "PATCH";
+    url = `${base}/${id}/comments/${commentId}`;
+    payload = { ownerId, note: body.note, requester: body.requester };
+  } else if (action === "editReply") {
+    method = "PATCH";
+    url = `${base}/${id}/comments/${commentId}/replies/${body.replyId}`;
+    payload = { ownerId, note: body.note, requester: body.requester };
   }
 
   const res = await fetch(url, {
