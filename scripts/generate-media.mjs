@@ -91,7 +91,7 @@ for (const [id, videoPath] of videoPosterSources) {
 const MEMBER_TARGET_W = 960;
 const MEMBER_TARGET_H = 1280;
 
-/** @typedef {{ position?: string; maxUpscale?: number; sharpen?: boolean; despeckle?: boolean; cropZoom?: number; focusX?: number; focusY?: number }} MemberOpts */
+/** @typedef {{ position?: string; maxUpscale?: number; sharpen?: boolean; despeckle?: boolean; cropZoom?: number; focusX?: number; focusY?: number; preExtractCentre?: boolean }} MemberOpts */
 
 /**
  * Remove isolated white speckles on dark edges (common cutout / compression artifacts).
@@ -214,6 +214,13 @@ async function processMemberPhoto(inputPath, outputPath, opts = {}) {
 
   let pipeline = sharp(inputPath).rotate();
 
+  if (opts.preExtractCentre && srcW / srcH > aspect) {
+    const eh = srcH;
+    const ew = Math.round(srcH * aspect);
+    const left = Math.round((srcW - ew) / 2);
+    pipeline = pipeline.extract({ left, top: 0, width: ew, height: eh });
+  }
+
   if (despeckle) {
     const rotated = await pipeline.toBuffer();
     pipeline = await despeckleWhiteDots(sharp(rotated));
@@ -277,7 +284,11 @@ const memberSources = [
   ["shen-xinyu.png", "shen-xinyu.webp", {}],
   ["richard.png", "richard.webp", {}],
   ["ellis.png", "ellis.webp", {}],
-  ["bai-qianhe.png", "bai-qianhe.webp", { position: "centre", maxUpscale: 2.2 }],
+  [
+    "bai-qianhe.png",
+    "bai-qianhe.webp",
+    { position: "centre", maxUpscale: 2.2, preExtractCentre: true, sharpen: false },
+  ],
   ["gu-chenyang.png", "gu-chenyang.webp", {}],
   ["huang-ziyi.png", "huang-ziyi.webp", { position: "centre", maxUpscale: 2.2, cropZoom: 1.08 }],
   ["liu-yiyang.png", "liu-yiyang.webp", { position: "centre", maxUpscale: 2.2 }],

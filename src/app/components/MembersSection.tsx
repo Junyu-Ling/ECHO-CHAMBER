@@ -126,7 +126,8 @@ const members = [
     roleEn: "中国部 G10C2",
     bio: "在琴键上飞，在后台忙，哪里需要就往哪里钻的乐队万能补丁",
     photo: baiQianhePhoto,
-    photoPosition: "center center",
+    photoPosition: "center 54%",
+    photoZoom: 0.9,
   },
   {
     id: 13,
