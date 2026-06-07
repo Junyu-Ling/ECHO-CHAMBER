@@ -272,11 +272,7 @@ const memberSources = [
   ["shen-xinyu.png", "shen-xinyu.webp", {}],
   ["richard.png", "richard.webp", {}],
   ["ellis.png", "ellis.webp", {}],
-  [
-    "bai-qianhe.png",
-    "bai-qianhe.webp",
-    { position: "centre", maxUpscale: 2.2, cropZoom: 1.32, focusX: 0.5, focusY: 0.52 },
-  ],
+  ["bai-qianhe.png", "bai-qianhe.webp", { position: "centre", maxUpscale: 2.2 }],
   ["gu-chenyang.png", "gu-chenyang.webp", {}],
   ["huang-ziyi.png", "huang-ziyi.webp", { position: "centre", maxUpscale: 2.2, cropZoom: 1.08 }],
   ["liu-yiyang.png", "liu-yiyang.webp", { position: "centre", maxUpscale: 2.2 }],
