@@ -64,14 +64,19 @@ await mkdir(postersDir, { recursive: true });
 await mkdir(path.join(assetsDir, "members"), { recursive: true });
 
 await sharp(heroSource)
-  .resize(1920, null, { withoutEnlargement: true })
-  .webp({ quality: 82 })
+  .rotate()
+  .resize(1920, null, {
+    withoutEnlargement: false,
+    kernel: sharp.kernel.lanczos3,
+  })
+  .webp({ quality: 88, effort: 6 })
   .toFile(path.join(assetsDir, "hero.webp"));
 
 await sharp(heroSource)
-  .resize(32, null)
-  .blur(6)
-  .webp({ quality: 55 })
+  .rotate()
+  .resize(48, null)
+  .blur(4)
+  .webp({ quality: 60 })
   .toFile(path.join(assetsDir, "hero-placeholder.webp"));
 
 for (const [id, videoPath] of videoPosterSources) {
