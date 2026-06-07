@@ -86,7 +86,7 @@ for (const [id, videoPath] of videoPosterSources) {
 const MEMBER_TARGET_W = 960;
 const MEMBER_TARGET_H = 1280;
 
-/** @typedef {{ position?: string; maxUpscale?: number; sharpen?: boolean; despeckle?: boolean; cropZoom?: number }} MemberOpts */
+/** @typedef {{ position?: string; maxUpscale?: number; sharpen?: boolean; despeckle?: boolean; cropZoom?: number; focusX?: number; focusY?: number }} MemberOpts */
 
 /**
  * Remove isolated white speckles on dark edges (common cutout / compression artifacts).
@@ -226,16 +226,20 @@ async function processMemberPhoto(inputPath, outputPath, opts = {}) {
 
   const cropZoom = opts.cropZoom ?? 1;
   if (cropZoom > 1) {
+    const focusX = opts.focusX ?? 0.5;
+    const focusY = opts.focusY ?? 0.5;
     const buf = await pipeline.toBuffer();
     const meta = await sharp(buf).metadata();
     const w = meta.width ?? outW;
     const h = meta.height ?? outH;
     const nw = Math.max(1, Math.round(w / cropZoom));
     const nh = Math.max(1, Math.round(h / cropZoom));
+    const centerX = focusX * w;
+    const centerY = focusY * h;
     pipeline = sharp(buf)
       .extract({
-        left: Math.round((w - nw) / 2),
-        top: Math.round((h - nh) / 2),
+        left: Math.round(Math.max(0, Math.min(w - nw, centerX - nw / 2))),
+        top: Math.round(Math.max(0, Math.min(h - nh, centerY - nh / 2))),
         width: nw,
         height: nh,
       })
@@ -268,7 +272,11 @@ const memberSources = [
   ["shen-xinyu.png", "shen-xinyu.webp", {}],
   ["richard.png", "richard.webp", {}],
   ["ellis.png", "ellis.webp", {}],
-  ["bai-qianhe.png", "bai-qianhe.webp", { position: "centre", maxUpscale: 2.2 }],
+  [
+    "bai-qianhe.png",
+    "bai-qianhe.webp",
+    { position: "centre", maxUpscale: 2.2, cropZoom: 1.24, focusX: 0.5, focusY: 0.58 },
+  ],
   ["gu-chenyang.png", "gu-chenyang.webp", {}],
   ["huang-ziyi.png", "huang-ziyi.webp", { position: "centre", maxUpscale: 2.2, cropZoom: 1.08 }],
   ["liu-yiyang.png", "liu-yiyang.webp", { position: "centre", maxUpscale: 2.2 }],
