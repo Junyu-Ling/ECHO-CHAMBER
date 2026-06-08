@@ -40,6 +40,20 @@ function preferVercelApi(): boolean {
   return import.meta.env.PROD || import.meta.env.VITE_USE_VERCEL_API === "true";
 }
 
+/** 本地 Vite 无 /api，除非显式开启 VITE_USE_VERCEL_API */
+function canUseVercelApi(): boolean {
+  if (!preferVercelApi()) return false;
+  const base = vercelApiBase();
+  if (!base) return false;
+  if (
+    import.meta.env.VITE_USE_VERCEL_API !== "true" &&
+    /localhost|127\.0\.0\.1/i.test(base)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function getCachedWritePath(): WritePath | null {
   if (typeof window === "undefined") return null;
   const v = sessionStorage.getItem(WRITE_PATH_KEY);
@@ -54,12 +68,15 @@ function cacheWritePath(path: WritePath) {
 function writePathOrder(): WritePath[] {
   const cached = getCachedWritePath();
   const envPath = import.meta.env.VITE_WRITE_PATH as WritePath | undefined;
-  const all: WritePath[] = preferVercelApi()
-    ? ["vercel", "db", "edge"]
-    : envPath && ["vercel", "db", "edge"].includes(envPath)
-      ? [envPath, ...(["edge", "db"] as WritePath[]).filter((p) => p !== envPath)]
-      : ["edge", "db"];
-  if (!cached) return all;
+  const basePaths: WritePath[] = [];
+  if (canUseVercelApi()) basePaths.push("vercel");
+  if (envPath === "edge" || envPath === "db") {
+    basePaths.push(envPath, ...(["edge", "db"] as WritePath[]).filter((p) => p !== envPath));
+  } else {
+    basePaths.push("edge", "db");
+  }
+  const all = [...new Set(basePaths)];
+  if (!cached || (cached === "vercel" && !canUseVercelApi())) return all;
   return [cached, ...all.filter((p) => p !== cached)];
 }
 
@@ -104,9 +121,9 @@ async function listViaEdge(): Promise<SongRequest[]> {
 }
 
 export async function fetchAllRequests(): Promise<SongRequest[]> {
-  const order: Array<"vercel" | "db" | "edge"> = preferVercelApi()
+  const order: Array<"vercel" | "db" | "edge"> = canUseVercelApi()
     ? ["vercel", "db", "edge"]
-    : ["db", "edge"];
+    : ["edge", "db"];
 
   for (const path of order) {
     try {
@@ -128,39 +145,11 @@ async function persistViaVercel(body: Record<string, unknown>) {
   const base = vercelApiBase();
   if (!base) throw new Error("No Vercel API");
 
-  const action = body.action as string | undefined;
-  const id = body.id;
-  const commentId = body.commentId;
-  const ownerId = body.ownerId;
-
-  let url = base;
-  let method = "POST";
-  let payload: Record<string, unknown> = body;
-
-  if (action === "addReply") {
-    url = `${base}/${id}/comments/${commentId}/replies`;
-    payload = { reply: body.reply };
-  } else if (action === "toggleCommentLike") {
-    url = `${base}/${id}/comments/${commentId}/like`;
-    payload = { ownerId };
-  } else if (action === "toggleReplyLike") {
-    url = `${base}/${id}/comments/${commentId}/replies/${body.replyId}/like`;
-    payload = { ownerId };
-  } else if (action === "deleteReply") {
-    method = "DELETE";
-    url = `${base}/${id}/comments/${commentId}/replies/${body.replyId}`;
-    payload = { ownerId };
-  } else if (action === "deleteComment") {
-    method = "DELETE";
-    url = `${base}/${id}/comments/${commentId}`;
-    payload = { ownerId };
-  }
-  // editComment / editReply：与点赞不同，走 POST /api/requests + action（Vercel 对 PATCH 子路径易 404）
-
-  const res = await fetch(url, {
-    method,
+  // 全部走 POST /api/requests + action，避免子路径在 Vercel 上 404
+  const res = await fetch(base, {
+    method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   const data = await parseJson(res);
   if (!res.ok || !data.success) {
@@ -303,6 +292,24 @@ export async function postRequestsBody(body: Record<string, unknown>) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`${path}: ${msg}`);
+      if (typeof window !== "undefined") {
+        if (
+          path === "vercel" &&
+          (msg.includes("404") || msg.includes("405") || msg.includes("Not found"))
+        ) {
+          sessionStorage.removeItem(WRITE_PATH_KEY);
+        }
+        if (
+          path === "db" &&
+          (msg.includes("Not found") ||
+            msg.includes("row-level security") ||
+            msg.includes("数据库未开放") ||
+            msg.includes("permission denied") ||
+            msg.includes("JWT"))
+        ) {
+          sessionStorage.removeItem(WRITE_PATH_KEY);
+        }
+      }
       if (
         path === "db" &&
         (msg.includes("row-level security") ||
@@ -313,6 +320,10 @@ export async function postRequestsBody(body: Record<string, unknown>) {
         cacheWritePath("edge");
       }
     }
+  }
+
+  if (typeof window !== "undefined" && errors.length > 0) {
+    sessionStorage.removeItem(WRITE_PATH_KEY);
   }
 
   const combined = errors.join(" | ");

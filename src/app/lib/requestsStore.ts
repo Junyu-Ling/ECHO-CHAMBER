@@ -141,7 +141,8 @@ export async function toggleCommentLike(
   ownerId: string
 ) {
   const { key, reqData } = await loadTrack(trackId);
-  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  const target = String(commentId);
+  const idx = reqData.comments.findIndex((c) => String(c.commentId) === target);
   if (idx < 0) throw new Error("Comment not found");
   const comment = normalizeComment(reqData.comments[idx] as Comment);
   comment.likedBy = toggleLikedBy(comment.likedBy || [], ownerId);
@@ -157,10 +158,12 @@ export async function toggleReplyLike(
   ownerId: string
 ) {
   const { key, reqData } = await loadTrack(trackId);
-  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  const target = String(commentId);
+  const idx = reqData.comments.findIndex((c) => String(c.commentId) === target);
   if (idx < 0) throw new Error("Comment not found");
   const comment = normalizeComment(reqData.comments[idx] as Comment);
-  const rIdx = (comment.replies || []).findIndex((r) => r.replyId === replyId);
+  const targetReply = String(replyId);
+  const rIdx = (comment.replies || []).findIndex((r) => String(r.replyId) === targetReply);
   if (rIdx < 0) throw new Error("Reply not found");
   const reply = normalizeReply(comment.replies![rIdx]);
   reply.likedBy = toggleLikedBy(reply.likedBy || [], ownerId);

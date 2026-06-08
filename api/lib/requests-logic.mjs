@@ -102,6 +102,11 @@ export async function listRequests() {
   return { success: true, data: migrated };
 }
 
+function findCommentIndex(comments, commentId) {
+  const target = String(commentId);
+  return comments.findIndex((c) => String(c.commentId) === target);
+}
+
 async function loadTrack(id) {
   const key = `req:${id}`;
   const reqData = await kv.kvGet(key);
@@ -113,28 +118,31 @@ async function loadTrack(id) {
 
 export async function toggleCommentLike(trackId, commentId, ownerId) {
   const { key, reqData } = await loadTrack(trackId);
-  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  const idx = findCommentIndex(reqData.comments, commentId);
   if (idx < 0) throw Object.assign(new Error("Comment not found"), { status: 404 });
   const comment = normalizeComment(reqData.comments[idx]);
   comment.likedBy = toggleLikedBy(comment.likedBy, ownerId);
   reqData.comments[idx] = comment;
-  await kv.kvSet(key, stamp(reqData));
-  return { success: true, data: normalizeRequest(reqData) };
+  const saved = normalizeRequest(reqData);
+  await kv.kvSet(key, stamp(saved));
+  return { success: true, data: saved };
 }
 
 export async function toggleReplyLike(trackId, commentId, replyId, ownerId) {
   const { key, reqData } = await loadTrack(trackId);
-  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  const idx = findCommentIndex(reqData.comments, commentId);
   if (idx < 0) throw Object.assign(new Error("Comment not found"), { status: 404 });
   const comment = normalizeComment(reqData.comments[idx]);
-  const rIdx = (comment.replies || []).findIndex((r) => r.replyId === replyId);
+  const targetReply = String(replyId);
+  const rIdx = (comment.replies || []).findIndex((r) => String(r.replyId) === targetReply);
   if (rIdx < 0) throw Object.assign(new Error("Reply not found"), { status: 404 });
   const reply = normalizeReply(comment.replies[rIdx]);
   reply.likedBy = toggleLikedBy(reply.likedBy, ownerId);
   comment.replies[rIdx] = reply;
   reqData.comments[idx] = comment;
-  await kv.kvSet(key, stamp(reqData));
-  return { success: true, data: normalizeRequest(reqData) };
+  const saved = normalizeRequest(reqData);
+  await kv.kvSet(key, stamp(saved));
+  return { success: true, data: saved };
 }
 
 export async function addReply(trackId, commentId, reply) {
@@ -144,7 +152,7 @@ export async function addReply(trackId, commentId, reply) {
   if (note.length > 500) throw Object.assign(new Error("回复过长"), { status: 400 });
 
   const { key, reqData } = await loadTrack(trackId);
-  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  const idx = findCommentIndex(reqData.comments, commentId);
   if (idx < 0) throw Object.assign(new Error("Comment not found"), { status: 404 });
 
   const comment = normalizeComment(reqData.comments[idx]);
@@ -181,11 +189,12 @@ export async function editReply(trackId, commentId, replyId, ownerId, patch) {
   if (note.length > 500) throw Object.assign(new Error("回复过长"), { status: 400 });
 
   const { key, reqData } = await loadTrack(trackId);
-  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  const idx = findCommentIndex(reqData.comments, commentId);
   if (idx < 0) throw Object.assign(new Error("Comment not found"), { status: 404 });
 
   const comment = normalizeComment(reqData.comments[idx]);
-  const rIdx = (comment.replies || []).findIndex((r) => r.replyId === replyId);
+  const targetReply = String(replyId);
+  const rIdx = (comment.replies || []).findIndex((r) => String(r.replyId) === targetReply);
   if (rIdx < 0) throw Object.assign(new Error("Reply not found"), { status: 404 });
 
   const reply = normalizeReply(comment.replies[rIdx]);
@@ -219,13 +228,14 @@ export async function editReply(trackId, commentId, replyId, ownerId, patch) {
 
 export async function deleteReply(trackId, commentId, replyId, ownerId) {
   const { key, reqData } = await loadTrack(trackId);
-  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  const idx = findCommentIndex(reqData.comments, commentId);
   if (idx < 0) throw Object.assign(new Error("Comment not found"), { status: 404 });
 
   const comment = normalizeComment(reqData.comments[idx]);
   const before = (comment.replies || []).length;
+  const targetReply = String(replyId);
   comment.replies = (comment.replies || []).filter(
-    (r) => !(r.replyId === replyId && r.ownerId === ownerId),
+    (r) => !(String(r.replyId) === targetReply && r.ownerId === ownerId),
   );
   if (comment.replies.length === before) {
     throw Object.assign(new Error("Unauthorized or reply not found"), { status: 403 });
@@ -240,7 +250,7 @@ export async function deleteComment(trackId, commentId, ownerId) {
   const reqData = await kv.kvGet(key);
   if (!reqData?.comments) throw Object.assign(new Error("Not found"), { status: 404 });
 
-  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  const idx = findCommentIndex(reqData.comments, commentId);
   if (idx < 0) {
     throw Object.assign(new Error("Comment not found"), { status: 404 });
   }
@@ -250,8 +260,9 @@ export async function deleteComment(trackId, commentId, ownerId) {
   } catch {
     throw Object.assign(new Error("Unauthorized or comment not found"), { status: 403 });
   }
+  const targetId = String(commentId);
   const originalLen = reqData.comments.length;
-  reqData.comments = reqData.comments.filter((c) => c.commentId !== commentId);
+  reqData.comments = reqData.comments.filter((c) => String(c.commentId) !== targetId);
   if (reqData.comments.length === originalLen) {
     throw Object.assign(new Error("Unauthorized or comment not found"), { status: 403 });
   }
@@ -271,7 +282,7 @@ export async function editComment(trackId, commentId, ownerId, patch) {
   if (note.length > 500) throw Object.assign(new Error("留言过长"), { status: 400 });
 
   const { key, reqData } = await loadTrack(trackId);
-  const idx = reqData.comments.findIndex((c) => c.commentId === commentId);
+  const idx = findCommentIndex(reqData.comments, commentId);
   if (idx < 0) throw Object.assign(new Error("Comment not found"), { status: 404 });
 
   const comment = normalizeComment(reqData.comments[idx]);

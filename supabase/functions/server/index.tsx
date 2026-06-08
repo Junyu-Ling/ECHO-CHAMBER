@@ -131,6 +131,11 @@ function normalizeRequest(req: any) {
   };
 }
 
+function findCommentIndex(comments: any[], commentId: string) {
+  const target = String(commentId);
+  return comments.findIndex((cmt) => String(cmt.commentId) === target);
+}
+
 async function toggleCommentLikeInStore(
   trackId: string | number,
   commentId: string,
@@ -141,15 +146,16 @@ async function toggleCommentLikeInStore(
   if (!reqData?.comments) {
     throw new Error("Not found");
   }
-  const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+  const idx = findCommentIndex(reqData.comments, commentId);
   if (idx < 0) {
     throw new Error("Comment not found");
   }
   const comment = normalizeComment(reqData.comments[idx]);
   comment.likedBy = toggleLikedBy(comment.likedBy, ownerId);
   reqData.comments[idx] = comment;
-  await kv.set(key, stampReq(reqData));
-  return normalizeRequest(reqData);
+  const saved = normalizeRequest(reqData);
+  await kv.set(key, stampReq(saved));
+  return saved;
 }
 
 async function toggleReplyLikeInStore(
@@ -163,12 +169,13 @@ async function toggleReplyLikeInStore(
   if (!reqData?.comments) {
     throw new Error("Not found");
   }
-  const idx = reqData.comments.findIndex((cmt: any) => cmt.commentId === commentId);
+  const idx = findCommentIndex(reqData.comments, commentId);
   if (idx < 0) {
     throw new Error("Comment not found");
   }
   const comment = normalizeComment(reqData.comments[idx]);
-  const rIdx = (comment.replies || []).findIndex((r: any) => r.replyId === replyId);
+  const targetReply = String(replyId);
+  const rIdx = (comment.replies || []).findIndex((r: any) => String(r.replyId) === targetReply);
   if (rIdx < 0) {
     throw new Error("Reply not found");
   }
@@ -176,8 +183,9 @@ async function toggleReplyLikeInStore(
   reply.likedBy = toggleLikedBy(reply.likedBy, ownerId);
   comment.replies[rIdx] = reply;
   reqData.comments[idx] = comment;
-  await kv.set(key, stampReq(reqData));
-  return normalizeRequest(reqData);
+  const saved = normalizeRequest(reqData);
+  await kv.set(key, stampReq(saved));
+  return saved;
 }
 
 async function addReplyInStore(

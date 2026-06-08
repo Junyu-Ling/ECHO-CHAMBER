@@ -159,31 +159,15 @@ export function SongRequestSection() {
             const key = payload.new.key as string;
             if (!key?.startsWith("req:")) return;
 
-            let newReq = payload.new.value;
-            if (newReq && !newReq.comments) {
-              newReq = {
-                ...newReq,
-                comments:
-                  newReq.note || newReq.requester
-                    ? [
-                        {
-                          commentId: newReq.id?.toString() || Date.now().toString(),
-                          note: newReq.note || "",
-                          requester: newReq.requester || "匿名",
-                          time: newReq.time || "刚刚",
-                          ownerId: newReq.ownerId || "",
-                        },
-                      ]
-                    : [],
-                createdAt: newReq.createdAt || newReq.id,
-              };
-            }
+            const newReq = payload.new.value
+              ? normalizeRequest(payload.new.value as SongRequest)
+              : null;
 
             if (newReq) {
               setRequests((prev) =>
                 applyTrackFromRemote(
                   prev,
-                  newReq as SongRequest,
+                  newReq,
                   pendingEditsRef.current,
                   optimisticUntilRef.current
                 )

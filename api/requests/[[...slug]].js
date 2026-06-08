@@ -39,6 +39,13 @@ export default async function handler(req, res) {
   const body = parseBody(req);
 
   try {
+    // 任意路径：带 action 的 POST/PATCH 一律走 postRequest（点赞/编辑等，避免子路径 404）
+    if ((req.method === "POST" || req.method === "PATCH") && body.action) {
+      const { status, body: payload } = await postRequest(body);
+      res.status(status).json(payload);
+      return;
+    }
+
     if (req.method === "GET" && slug.length === 0) {
       const result = await listRequests();
       res.status(200).json(result);
