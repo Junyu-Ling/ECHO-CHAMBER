@@ -115,6 +115,28 @@ export function SongRequestSection() {
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
   const [editingReplyKey, setEditingReplyKey] = useState<string | null>(null);
   const [savingReplyKey, setSavingReplyKey] = useState<string | null>(null);
+  /** 本机刚参与投票/点歌，在远端 merge 完成前保持右侧票数高亮 */
+  const [myParticipatedTrackIds, setMyParticipatedTrackIds] = useState<Set<number>>(
+    () => new Set()
+  );
+
+  const markMyParticipation = (trackId: number) => {
+    setMyParticipatedTrackIds((prev) => {
+      if (prev.has(trackId)) return prev;
+      const next = new Set(prev);
+      next.add(trackId);
+      return next;
+    });
+  };
+
+  const clearMyParticipation = (trackId: number) => {
+    setMyParticipatedTrackIds((prev) => {
+      if (!prev.has(trackId)) return prev;
+      const next = new Set(prev);
+      next.delete(trackId);
+      return next;
+    });
+  };
 
   const fetchGenerationRef = useRef(0);
   const pendingEditsRef = useRef(new Map<string, PendingCommentEdit>());
@@ -614,12 +636,14 @@ export function SongRequestSection() {
       markTrackOptimistic(id);
       const voteSnapshot = requests;
       applyCommentRemoval(id, myVote.commentId);
+      clearMyParticipation(id);
       void (async () => {
         try {
           await removeCommentOnServer(id, myVote.commentId);
         } catch (err) {
           console.error("Error canceling vote:", err);
           setRequests(voteSnapshot);
+          markMyParticipation(id);
         } finally {
           voteInFlightRef.current.delete(id);
         }
@@ -644,6 +668,7 @@ export function SongRequestSection() {
     });
 
     markTrackOptimistic(id);
+    markMyParticipation(id);
     const voteSnapshot = requests;
     const now = Date.now();
     setRequests((prev) =>
@@ -673,6 +698,7 @@ export function SongRequestSection() {
         const msg = err instanceof Error ? err.message : "";
         if (msg.includes("\u7559\u8a00")) alert(msg);
         setRequests(voteSnapshot);
+        clearMyParticipation(id);
       } finally {
         voteInFlightRef.current.delete(id);
       }
@@ -714,6 +740,7 @@ export function SongRequestSection() {
     };
 
     markTrackOptimistic(trackId);
+    markMyParticipation(trackId);
     setRequests((prev) => {
       const existing = prev.find((r) => r.id === trackId);
       if (existing) {
@@ -755,6 +782,7 @@ export function SongRequestSection() {
       alert(msg || "提交失败，请稍后重试");
       setSubmitted(false);
       setRequests(submitSnapshot);
+      clearMyParticipation(trackId);
     }
   };
 
@@ -934,6 +962,7 @@ export function SongRequestSection() {
                     request={req}
                     rank={sortMode === "hot" ? index + 1 : undefined}
                     maxVotes={maxVotes}
+                    participatedHighlight={myParticipatedTrackIds.has(req.id)}
                     onVote={() => handleVote(req.id)}
                     onDeleteComment={(commentId) => handleDeleteComment(req.id, commentId)}
                     onAddReply={(commentId, note, requester) =>
@@ -1047,6 +1076,7 @@ function RequestCard({
   request,
   rank,
   maxVotes,
+  participatedHighlight,
   onVote,
   onDeleteComment,
   onAddReply,
@@ -1072,6 +1102,7 @@ function RequestCard({
   request: SongRequest;
   rank?: number;
   maxVotes: number;
+  participatedHighlight?: boolean;
   onVote: () => void;
   onDeleteComment: (commentId: string) => void;
   onAddReply: (commentId: string, note: string, requester: string) => void;
@@ -1115,7 +1146,7 @@ function RequestCard({
   const pct = Math.round((request.votes / maxVotes) * 100);
   const hasParticipated = hasParticipatedOnTrack(request.comments, clientId);
   const myVote = findMyVoteComment(request.comments, clientId);
-  const voteHighlight = hasParticipated;
+  const voteHighlight = hasParticipated || participatedHighlight === true;
   const voteTitle = myVote
     ? VOTE_CANCEL_TITLE
     : hasParticipated
@@ -1191,11 +1222,14 @@ function RequestCard({
           type="button"
           onClick={onVote}
           disabled={hasParticipated && !myVote}
-          className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 hover:opacity-80 disabled:opacity-40"
+          className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 transition-colors"
           style={{
-            border: voteHighlight ? "1px solid rgba(255,159,212,0.5)" : "1px solid rgba(255,255,255,0.08)",
-            background: voteHighlight ? "rgba(255,159,212,0.08)" : "transparent",
+            border: voteHighlight
+              ? "1px solid rgba(255,159,212,0.55)"
+              : "1px solid rgba(255,255,255,0.08)",
+            background: voteHighlight ? "rgba(255,159,212,0.14)" : "transparent",
             minWidth: 44,
+            opacity: 1,
             cursor: hasParticipated && !myVote ? "not-allowed" : "pointer",
           }}
           title={voteTitle}
@@ -1210,6 +1244,7 @@ function RequestCard({
               color: voteHighlight ? "#FF9FD4" : "#6B6B8A",
               fontFamily: "'Anton', sans-serif",
               letterSpacing: "0.05em",
+              opacity: 1,
             }}
           >
             {request.votes}

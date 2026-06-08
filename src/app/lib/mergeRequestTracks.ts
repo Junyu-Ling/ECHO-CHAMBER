@@ -96,6 +96,9 @@ function mergeComments(local: Comment[], remote: Comment[]): Comment[] {
     else {
       const useLocal = commentRevision(l) >= commentRevision(r);
       const primary = useLocal ? { ...l } : { ...r };
+      if (!primary.ownerId && (l.ownerId || r.ownerId)) {
+        primary.ownerId = l.ownerId || r.ownerId;
+      }
       primary.replies = mergeReplies(l.replies || [], r.replies || []);
       merged.push(primary);
     }
