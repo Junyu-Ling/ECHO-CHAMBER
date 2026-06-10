@@ -287,7 +287,14 @@ const memberSources = [
   [
     "bai-qianhe.png",
     "bai-qianhe.webp",
-    { position: "centre", maxUpscale: 2.2, preExtractCentre: true, sharpen: false },
+    {
+      position: "centre",
+      maxUpscale: 2.2,
+      sharpen: false,
+      focusX: 0.52,
+      focusY: 0.38,
+      cropZoom: 1.18,
+    },
   ],
   ["gu-chenyang.png", "gu-chenyang.webp", {}],
   ["huang-ziyi.png", "huang-ziyi.webp", { position: "centre", maxUpscale: 2.2, cropZoom: 1.08 }],
