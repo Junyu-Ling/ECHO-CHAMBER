@@ -22,6 +22,7 @@ import {
 } from "../copy/voteCopy";
 import {
   findMyVoteComment,
+  getMyCommentsOnTrack,
   hasParticipatedOnTrack,
   isVoteComment,
 } from "../lib/voteParticipation";
@@ -630,9 +631,9 @@ export function SongRequestSection() {
     }
 
     const myVote = findMyVoteComment(existingReq.comments, clientId);
-    const hasParticipated = hasParticipatedOnTrack(existingReq.comments, clientId);
 
-    if (hasParticipated && myVote) {
+    // 已投过票 → 再点一次取消投票
+    if (myVote) {
       markTrackOptimistic(id);
       const voteSnapshot = requests;
       applyCommentRemoval(id, myVote.commentId);
@@ -651,7 +652,9 @@ export function SongRequestSection() {
       return;
     }
 
-    if (hasParticipated) {
+    // 已留言（非纯投票）→ 不能再点投票
+    const myComments = getMyCommentsOnTrack(existingReq.comments, clientId);
+    if (myComments.length > 0) {
       alert(VOTE_ALREADY_PARTICIPATED);
       voteInFlightRef.current.delete(id);
       return;
@@ -740,7 +743,9 @@ export function SongRequestSection() {
     };
 
     markTrackOptimistic(trackId);
-    markMyParticipation(trackId);
+    if (isVoteComment(newComment)) {
+      markMyParticipation(trackId);
+    }
     setRequests((prev) => {
       const existing = prev.find((r) => r.id === trackId);
       if (existing) {
@@ -1144,12 +1149,14 @@ function RequestCard({
   }, [isInteractingOnTrack]);
 
   const pct = Math.round((request.votes / maxVotes) * 100);
-  const hasParticipated = hasParticipatedOnTrack(request.comments, clientId);
   const myVote = findMyVoteComment(request.comments, clientId);
-  const voteHighlight = hasParticipated || participatedHighlight === true;
+  const hasTextParticipation =
+    !myVote && hasParticipatedOnTrack(request.comments, clientId);
+  const voteHighlight =
+    !!myVote || participatedHighlight === true || hasTextParticipation;
   const voteTitle = myVote
     ? VOTE_CANCEL_TITLE
-    : hasParticipated
+    : hasTextParticipation
       ? VOTE_PARTICIPATED_TITLE
       : VOTE_ADD_TITLE;
 
@@ -1221,8 +1228,8 @@ function RequestCard({
         <button
           type="button"
           onClick={onVote}
-          disabled={hasParticipated && !myVote}
-          className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 transition-colors"
+          disabled={hasTextParticipation}
+          className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 transition-colors hover:opacity-90"
           style={{
             border: voteHighlight
               ? "1px solid rgba(255,159,212,0.55)"
@@ -1230,7 +1237,7 @@ function RequestCard({
             background: voteHighlight ? "rgba(255,159,212,0.14)" : "transparent",
             minWidth: 44,
             opacity: 1,
-            cursor: hasParticipated && !myVote ? "not-allowed" : "pointer",
+            cursor: hasTextParticipation ? "not-allowed" : "pointer",
           }}
           title={voteTitle}
         >

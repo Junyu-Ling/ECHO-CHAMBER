@@ -2,11 +2,12 @@ import { VOTE_NOTE, VOTE_REQUESTER } from "../copy/voteCopy";
 import { inferTimestampFromId } from "./commentTime";
 import type { Comment } from "../types/songRequest";
 
-/** 是否为「纯投票」留言（可单独取消投票） */
+/** 是否为「纯投票」留言（再点一次投票按钮可取消） */
 export function isVoteComment(c: Comment): boolean {
   if (c.isVote === true) return true;
   if (c.isVote === false) return false;
-  return c.note === VOTE_NOTE && c.requester === VOTE_REQUESTER;
+  // 旧数据可能缺 isVote，只要仍是默认推荐文案即视为投票
+  return c.note === VOTE_NOTE;
 }
 
 export function getMyCommentsOnTrack(
@@ -28,7 +29,12 @@ export function findMyVoteComment(
   comments: Comment[] | undefined,
   ownerId: string
 ): Comment | undefined {
-  return getMyCommentsOnTrack(comments, ownerId).find(isVoteComment);
+  const mine = getMyCommentsOnTrack(comments, ownerId);
+  const vote = mine.find(isVoteComment);
+  if (vote) return vote;
+  // 仅一条参与且为推荐文案时，也允许取消
+  if (mine.length === 1 && mine[0].note === VOTE_NOTE) return mine[0];
+  return undefined;
 }
 
 /** 排序/去重用：编辑时间优先于创建时间 */
