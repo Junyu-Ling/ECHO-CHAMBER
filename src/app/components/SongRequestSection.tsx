@@ -652,10 +652,9 @@ export function SongRequestSection() {
       return;
     }
 
-    // 已留言（非纯投票）→ 不能再点投票
+    // 已留言（非纯投票）→ 静默忽略，不弹提示，不添加新票
     const myComments = getMyCommentsOnTrack(existingReq.comments, clientId);
     if (myComments.length > 0) {
-      alert(VOTE_ALREADY_PARTICIPATED);
       voteInFlightRef.current.delete(id);
       return;
     }
@@ -1228,7 +1227,6 @@ function RequestCard({
         <button
           type="button"
           onClick={onVote}
-          disabled={hasTextParticipation}
           className="flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 transition-colors hover:opacity-90"
           style={{
             border: voteHighlight
@@ -1237,7 +1235,7 @@ function RequestCard({
             background: voteHighlight ? "rgba(255,159,212,0.14)" : "transparent",
             minWidth: 44,
             opacity: 1,
-            cursor: hasTextParticipation ? "not-allowed" : "pointer",
+            cursor: "pointer",
           }}
           title={voteTitle}
         >
