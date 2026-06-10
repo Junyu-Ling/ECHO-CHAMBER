@@ -1044,16 +1044,20 @@ function PreviewButton({ previewUrl }: { previewUrl: string }) {
   return (
     <button
       type="button"
+      onPointerDown={(e) => e.stopPropagation()}
       onClick={toggle}
-      className="flex-shrink-0 w-6 h-6 flex items-center justify-center transition-all duration-150 z-10 relative"
-      style={{ background: playing ? "#FF9FD4" : "rgba(255,159,212,0.15)", borderRadius: "50%" }}
+      className="flex-shrink-0 w-7 h-7 flex items-center justify-center transition-all duration-150 z-10 relative cursor-pointer hover:brightness-110"
+      style={{ background: playing ? "#FF9FD4" : "rgba(255,159,212,0.18)", borderRadius: "50%" }}
       title={playing ? "停止预览" : "30秒预览"}
     >
-      {playing ? (
-        <Square size={10} fill={playing ? "#07070C" : "#FF9FD4"} style={{ color: "#07070C" }} />
-      ) : (
-        <Play size={10} fill="#FF9FD4" style={{ color: "#FF9FD4", marginLeft: 1 }} />
-      )}
+      {/* 内层图标不拦截点击，确保整个圆形热区都可点 */}
+      <span className="pointer-events-none flex items-center justify-center">
+        {playing ? (
+          <Square size={11} fill="#07070C" style={{ color: "#07070C" }} />
+        ) : (
+          <Play size={11} fill="#FF9FD4" style={{ color: "#FF9FD4", marginLeft: 1 }} />
+        )}
+      </span>
     </button>
   );
 }

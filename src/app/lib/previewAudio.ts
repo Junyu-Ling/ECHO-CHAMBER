@@ -37,10 +37,22 @@ export function togglePreview(url: string): boolean {
     return false;
   }
 
-  stopPreview();
-  audio = new Audio(url);
+  // 切换到新预览：先停掉旧的（不重置 activeUrl 的通知，避免闪烁）
+  if (audio) {
+    audio.pause();
+    audio.onended = null;
+    audio = null;
+  }
+
+  const el = new Audio(url);
+  audio = el;
   activeUrl = url;
-  audio.onended = () => stopPreview();
-  void audio.play().then(notify).catch(() => stopPreview());
+  // 立即通知 UI 进入「播放中」状态，避免音频加载延迟造成「点了没反应」
+  notify();
+  el.onended = () => stopPreviewIf(url);
+  void el.play().catch(() => {
+    // 仅当这次播放仍是当前激活的才回滚（防止快速切换时误停新的）
+    if (audio === el) stopPreview();
+  });
   return true;
 }

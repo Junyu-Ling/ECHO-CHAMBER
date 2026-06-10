@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Search, Music, Loader2, X } from "lucide-react";
 import {
   SEARCH_PLACEHOLDER,
+  SEARCH_ENTER_HINT,
   PREVIEW_LABEL,
   APPLE_MUSIC_CREDIT,
   NO_SONG_RESULTS,
@@ -31,6 +32,33 @@ export function MusicSearchInput({ onSelect, value, onChange, selectedTrackId }:
   const [activeIdx, setActiveIdx] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reqIdRef = useRef(0);
+
+  const runSearch = async (term: string) => {
+    const q = term.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setOpen(false);
+      return;
+    }
+    const reqId = ++reqIdRef.current;
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=8&country=CN`
+      );
+      const data = await res.json();
+      // 丢弃过期请求的结果，避免乱序覆盖
+      if (reqId !== reqIdRef.current) return;
+      setResults(data.results || []);
+      setOpen(true);
+      setActiveIdx(-1);
+    } catch {
+      if (reqId === reqIdRef.current) setResults([]);
+    } finally {
+      if (reqId === reqIdRef.current) setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -45,22 +73,10 @@ export function MusicSearchInput({ onSelect, value, onChange, selectedTrackId }:
       setOpen(false);
       return;
     }
-    timerRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(
-          `https://itunes.apple.com/search?term=${encodeURIComponent(value)}&media=music&entity=song&limit=8&country=CN`
-        );
-        const data = await res.json();
-        setResults(data.results || []);
-        setOpen(true);
-        setActiveIdx(-1);
-      } catch {
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
+    timerRef.current = setTimeout(() => {
+      void runSearch(value);
     }, 400);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, selectedTrackId]);
 
   useEffect(() => {
@@ -75,11 +91,16 @@ export function MusicSearchInput({ onSelect, value, onChange, selectedTrackId }:
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      // 始终阻止冒泡到 form，避免误触表单提交
+      // 始终阻止冒泡到 form，绝不清空用户输入
       e.preventDefault();
-      if (open && results.length > 0) {
-        // 有高亮则选高亮项，否则选第一条
-        handleSelect(results[activeIdx >= 0 ? activeIdx : 0]);
+      e.stopPropagation();
+      if (open && results.length > 0 && activeIdx >= 0) {
+        // 用方向键选中了某条 → 直接选它
+        handleSelect(results[activeIdx]);
+      } else {
+        // 否则按回车立即搜索（跳过防抖等待）
+        if (timerRef.current) clearTimeout(timerRef.current);
+        void runSearch(value);
       }
       return;
     }
@@ -137,6 +158,12 @@ export function MusicSearchInput({ onSelect, value, onChange, selectedTrackId }:
         )}
       </div>
 
+      {!open && (
+        <p className="mt-1.5 text-[11px] leading-snug" style={{ color: "#7070a0" }}>
+          {SEARCH_ENTER_HINT}
+        </p>
+      )}
+
       {open && results.length > 0 && (
         <div
           className="absolute left-0 right-0 top-full z-50 overflow-y-auto"
@@ -154,23 +181,23 @@ export function MusicSearchInput({ onSelect, value, onChange, selectedTrackId }:
               onClick={() => handleSelect(track)}
               className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors duration-100"
               style={{
-                background: activeIdx === idx ? "rgba(255,159,212,0.08)" : "transparent",
-                borderBottom: "1px solid rgba(255,255,255,0.04)",
+                background: activeIdx === idx ? "rgba(255,159,212,0.12)" : "transparent",
+                borderBottom: "1px solid rgba(255,255,255,0.06)",
               }}
               onMouseEnter={() => setActiveIdx(idx)}
             >
-              <div className="flex-shrink-0 w-9 h-9 bg-muted overflow-hidden" style={{ borderRadius: 2 }}>
+              <div className="flex-shrink-0 w-9 h-9 overflow-hidden" style={{ borderRadius: 3, background: "rgba(255,255,255,0.06)" }}>
                 {track.artworkUrl60 ? (
                   <img src={track.artworkUrl60} alt={track.trackName} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
-                    <Music size={14} style={{ color: "#6B6B8A" }} />
+                    <Music size={14} style={{ color: "#8080b0" }} />
                   </div>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-foreground truncate">{track.trackName}</p>
-                <p className="text-xs text-muted-foreground truncate mt-0.5">{track.artistName}</p>
+                <p className="text-sm truncate" style={{ color: "#f0f0ff" }}>{track.trackName}</p>
+                <p className="text-xs truncate mt-0.5" style={{ color: "#9090b0" }}>{track.artistName}</p>
               </div>
               {track.previewUrl && (
                 <span
@@ -182,8 +209,9 @@ export function MusicSearchInput({ onSelect, value, onChange, selectedTrackId }:
               )}
             </button>
           ))}
-          <div className="px-4 py-2 flex items-center gap-1.5" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-            <span className="text-xs text-muted-foreground opacity-40">{APPLE_MUSIC_CREDIT}</span>
+          <div className="px-4 py-2 flex items-center justify-between gap-1.5" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <span className="text-[11px]" style={{ color: "#6060a0" }}>回车选中高亮项</span>
+            <span className="text-[11px]" style={{ color: "#6060a0" }}>{APPLE_MUSIC_CREDIT}</span>
           </div>
         </div>
       )}
