@@ -127,7 +127,7 @@ const members = [
     bio: "在琴键上飞，在后台忙，哪里需要就往哪里钻的乐队万能补丁",
     photo: baiQianhePhoto,
     photoPosition: "center 52%",
-    photoZoom: 1.04,
+    photoZoom: 1.12,
   },
   {
     id: 13,

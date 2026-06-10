@@ -293,7 +293,7 @@ const memberSources = [
       sharpen: false,
       focusX: 0.52,
       focusY: 0.54,
-      cropZoom: 1.32,
+      cropZoom: 1.45,
     },
   ],
   ["gu-chenyang.png", "gu-chenyang.webp", {}],
