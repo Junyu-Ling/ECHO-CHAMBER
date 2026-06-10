@@ -792,121 +792,136 @@ export function SongRequestSection() {
           {/* Left: Form */}
           <div className="lg:col-span-2">
             <div
-              className="p-6"
-              style={{ background: "#0E0E1C", border: "1px solid rgba(255,255,255,0.08)" }}
+              className="relative overflow-hidden"
+              style={{
+                background: "linear-gradient(160deg, #13122a 0%, #0f0e1e 100%)",
+                border: "1px solid rgba(255,159,212,0.18)",
+                boxShadow: "0 0 40px rgba(255,159,212,0.04) inset",
+              }}
             >
-              <div className="flex items-center gap-2 mb-5">
-                <Music size={15} style={{ color: "#FF9FD4" }} />
-                <span
-                  className="text-sm uppercase tracking-widest"
-                  style={{ color: "#FF9FD4", fontFamily: "'Anton', sans-serif", letterSpacing: "0.15em" }}
-                >
-                  为我们点一首歌
-                </span>
-              </div>
-
-              {submitted && (
-                <div
-                  className="mb-4 px-4 py-3 text-sm"
-                  style={{
-                    background: "rgba(255,159,212,0.08)",
-                    border: "1px solid rgba(255,159,212,0.3)",
-                    color: "#FF9FD4",
-                  }}
-                >
-                  点歌留言成功！感谢支持 ✦
+              {/* Top accent line */}
+              <div style={{ height: 2, background: "linear-gradient(90deg, #FF9FD4 0%, rgba(255,159,212,0.1) 100%)" }} />
+              <div className="p-6">
+                <div className="flex items-center gap-2 mb-6">
+                  <Music size={15} style={{ color: "#FF9FD4" }} />
+                  <span
+                    className="text-sm uppercase tracking-widest"
+                    style={{ color: "#FF9FD4", fontFamily: "'Anton', sans-serif", letterSpacing: "0.15em" }}
+                  >
+                    为我们点一首歌
+                  </span>
                 </div>
-              )}
 
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs uppercase tracking-widest text-muted-foreground mb-2">
-                    搜索歌曲 * <span className="lowercase text-[10px] opacity-70 ml-1">(须从列表中选择)</span>
-                  </label>
-                  <MusicSearchInput
-                    value={searchValue}
-                    selectedTrackId={selectedTrack?.trackId ?? null}
-                    onChange={(v) => {
-                      setSearchValue(v);
-                      setSelectedTrack(null);
+                {submitted && (
+                  <div
+                    className="mb-4 px-4 py-3 text-sm flex items-center gap-2"
+                    style={{
+                      background: "rgba(255,159,212,0.12)",
+                      border: "1px solid rgba(255,159,212,0.4)",
+                      color: "#FF9FD4",
                     }}
-                    onSelect={handleSelect}
-                  />
-                  {selectedTrack && (
-                    <div
-                      className="flex items-center gap-3 mt-2 px-3 py-2"
-                      style={{ background: "rgba(255,159,212,0.06)", border: "1px solid rgba(255,159,212,0.2)" }}
-                    >
-                      <img
-                        src={selectedTrack.artworkUrl60}
-                        alt={selectedTrack.trackName}
-                        className="w-8 h-8 object-cover flex-shrink-0"
-                        style={{ borderRadius: 2 }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-foreground truncate">{selectedTrack.trackName}</p>
-                        <p className="text-xs text-muted-foreground truncate">{selectedTrack.artistName}</p>
+                  >
+                    <span>✦</span>
+                    <span>点歌留言成功！感谢支持</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                  <div>
+                    <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#a0a0c0" }}>
+                      搜索歌曲 <span style={{ color: "#FF9FD4" }}>*</span>
+                      <span className="lowercase ml-1 opacity-60" style={{ fontSize: 10 }}>(须从列表中选择)</span>
+                    </label>
+                    <MusicSearchInput
+                      value={searchValue}
+                      selectedTrackId={selectedTrack?.trackId ?? null}
+                      onChange={(v) => {
+                        setSearchValue(v);
+                        setSelectedTrack(null);
+                      }}
+                      onSelect={handleSelect}
+                    />
+                    {selectedTrack && (
+                      <div
+                        className="flex items-center gap-3 mt-2 px-3 py-2.5"
+                        style={{
+                          background: "rgba(255,159,212,0.08)",
+                          border: "1px solid rgba(255,159,212,0.28)",
+                        }}
+                      >
+                        <img
+                          src={selectedTrack.artworkUrl60}
+                          alt={selectedTrack.trackName}
+                          className="w-9 h-9 object-cover flex-shrink-0"
+                          style={{ borderRadius: 3 }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color: "#f0f0ff" }}>{selectedTrack.trackName}</p>
+                          <p className="text-xs truncate mt-0.5" style={{ color: "#9090b0" }}>{selectedTrack.artistName}</p>
+                        </div>
+                        {selectedTrack.previewUrl && (
+                          <PreviewButton previewUrl={selectedTrack.previewUrl} />
+                        )}
                       </div>
-                      {selectedTrack.previewUrl && (
-                        <PreviewButton previewUrl={selectedTrack.previewUrl} />
-                      )}
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
 
-                <div>
-                  <label className="block text-xs uppercase tracking-widest text-muted-foreground mb-2">
-                    你的名字（选填）
-                  </label>
-                  <input
-                    type="text"
-                    value={nameInput}
-                    onChange={(e) => setNameInput(e.target.value)}
-                    placeholder="留空则显示为匿名"
-                    className="w-full px-4 py-3 text-sm text-foreground placeholder-muted-foreground outline-none transition-all duration-200"
+                  <div>
+                    <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#a0a0c0" }}>
+                      你的名字<span className="ml-1 opacity-60 lowercase" style={{ fontSize: 10 }}>（选填）</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      placeholder="留空则显示为匿名"
+                      className="w-full px-4 py-2.5 text-sm outline-none transition-all duration-200"
+                      style={{
+                        background: "rgba(255,255,255,0.05)",
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        color: "#e8e8f8",
+                      }}
+                      onFocus={(e) => (e.target.style.borderColor = "rgba(255,159,212,0.55)")}
+                      onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.14)")}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#a0a0c0" }}>
+                      留言<span className="ml-1 opacity-60 lowercase" style={{ fontSize: 10 }}>（选填）</span>
+                    </label>
+                    <textarea
+                      value={noteInput}
+                      onChange={(e) => setNoteInput(e.target.value)}
+                      placeholder="写下你想说的话..."
+                      rows={3}
+                      className="w-full px-4 py-2.5 text-sm outline-none transition-all duration-200 resize-none"
+                      style={{
+                        background: "rgba(255,255,255,0.05)",
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        color: "#e8e8f8",
+                      }}
+                      onFocus={(e) => (e.target.style.borderColor = "rgba(255,159,212,0.55)")}
+                      onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.14)")}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={!selectedTrack}
+                    className="flex items-center justify-center gap-2 py-3 text-sm uppercase tracking-widest transition-all duration-200 hover:brightness-110 mt-1 disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{
-                      background: "#141422",
-                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: selectedTrack ? "#FF9FD4" : "rgba(255,159,212,0.3)",
+                      color: "#07070C",
+                      fontFamily: "'Anton', sans-serif",
+                      letterSpacing: "0.15em",
                     }}
-                    onFocus={(e) => (e.target.style.borderColor = "rgba(255,159,212,0.4)")}
-                    onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.08)")}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs uppercase tracking-widest text-muted-foreground mb-2">
-                    留言（选填）
-                  </label>
-                  <textarea
-                    value={noteInput}
-                    onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="写下你想说的话..."
-                    rows={3}
-                    className="w-full px-4 py-3 text-sm text-foreground placeholder-muted-foreground outline-none transition-all duration-200 resize-none"
-                    style={{
-                      background: "#141422",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                    }}
-                    onFocus={(e) => (e.target.style.borderColor = "rgba(255,159,212,0.4)")}
-                    onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.08)")}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={!selectedTrack}
-                  className="flex items-center justify-center gap-2 py-3 text-sm uppercase tracking-widest transition-all duration-200 hover:opacity-85 mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    background: "#FF9FD4",
-                    color: "#07070C",
-                    fontFamily: "'Anton', sans-serif",
-                    letterSpacing: "0.15em",
-                  }}
-                >
-                  <Send size={14} />
-                  提交点歌 / 留言
-                </button>
-              </form>
+                  >
+                    <Send size={14} />
+                    提交点歌 / 留言
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
 
@@ -914,10 +929,10 @@ export function SongRequestSection() {
           <div className="lg:col-span-3">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
-                <p className="text-muted-foreground text-sm">
-                  共 <span className="text-foreground">{requests.length}</span> 首金曲
+                <p className="text-sm" style={{ color: "#9090b0" }}>
+                  共 <span style={{ color: "#e8e8f8" }}>{requests.length}</span> 首金曲
                 </p>
-                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full" style={{ background: "rgba(255,159,212,0.08)", border: "1px solid rgba(255,159,212,0.2)" }}>
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF9FD4] opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#FF9FD4]"></span>
@@ -925,7 +940,7 @@ export function SongRequestSection() {
                   <span className="text-[10px] uppercase tracking-tighter text-[#FF9FD4] font-bold">Live</span>
                 </div>
               </div>
-              <div className="flex gap-px" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="flex gap-px" style={{ border: "1px solid rgba(255,255,255,0.12)" }}>
                 <SortButton
                   active={sortMode === "hot"}
                   onClick={() => setSortMode("hot")}
@@ -1150,18 +1165,20 @@ function RequestCard({
 
   return (
     <div
-      className="relative overflow-hidden group flex flex-col"
+      className="relative overflow-hidden group flex flex-col transition-all duration-150"
       style={{
-        background: "#0E0E1C",
-        border: "1px solid rgba(255,255,255,0.07)",
+        background: "linear-gradient(135deg, #131224 0%, #0f0e1c 100%)",
+        border: voteHighlight
+          ? "1px solid rgba(255,159,212,0.22)"
+          : "1px solid rgba(255,255,255,0.1)",
       }}
     >
       {/* Popularity bar */}
       <div
-        className="absolute left-0 top-0 bottom-0 transition-[width] duration-75"
+        className="absolute left-0 top-0 bottom-0 transition-[width] duration-300"
         style={{
           width: `${pct}%`,
-          background: "rgba(255,159,212,0.04)",
+          background: "linear-gradient(90deg, rgba(255,159,212,0.07) 0%, rgba(255,159,212,0.02) 100%)",
           pointerEvents: "none",
         }}
       />
@@ -1169,9 +1186,9 @@ function RequestCard({
       <div className="relative flex items-center gap-3 px-4 py-3.5 z-10">
         {rank !== undefined && (
           <div
-            className="flex-shrink-0 w-6 text-center text-xs"
+            className="flex-shrink-0 w-6 text-center"
             style={{
-              color: rank <= 3 ? "#FF9FD4" : "#2E2E44",
+              color: rank === 1 ? "#FF9FD4" : rank <= 3 ? "rgba(255,159,212,0.7)" : "#4a4a6a",
               fontFamily: "'Anton', sans-serif",
               fontSize: rank <= 3 ? "0.85rem" : "0.75rem",
             }}
@@ -1185,14 +1202,14 @@ function RequestCard({
             src={request.artwork}
             alt={request.song}
             className="flex-shrink-0 w-10 h-10 object-cover"
-            style={{ borderRadius: 2 }}
+            style={{ borderRadius: 3, boxShadow: "0 2px 8px rgba(0,0,0,0.4)" }}
           />
         ) : (
           <div
             className="flex-shrink-0 w-10 h-10 flex items-center justify-center"
-            style={{ background: "#141422", borderRadius: 2 }}
+            style={{ background: "rgba(255,255,255,0.05)", borderRadius: 3, border: "1px solid rgba(255,255,255,0.08)" }}
           >
-            <Music size={14} style={{ color: "#3A3A55" }} />
+            <Music size={14} style={{ color: "#6060a0" }} />
           </div>
         )}
 
@@ -1200,8 +1217,8 @@ function RequestCard({
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0 flex items-center gap-2">
               <p
-                className="text-foreground truncate"
-                style={{ fontFamily: "'Anton', sans-serif", letterSpacing: "0.04em", fontSize: "0.95rem" }}
+                className="truncate"
+                style={{ fontFamily: "'Anton', sans-serif", letterSpacing: "0.04em", fontSize: "0.95rem", color: "#f0f0ff" }}
               >
                 {request.song}
               </p>
@@ -1209,7 +1226,7 @@ function RequestCard({
             </div>
           </div>
           {request.artist && (
-            <p className="text-muted-foreground text-xs truncate mt-0.5">{request.artist}</p>
+            <p className="text-xs truncate mt-0.5" style={{ color: "#8080b0" }}>{request.artist}</p>
           )}
         </div>
 
@@ -1251,8 +1268,8 @@ function RequestCard({
           <button
             type="button"
             onClick={() => setCommentsExpanded((open) => !open)}
-            className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider transition-colors hover:opacity-100 opacity-70"
-            style={{ color: "#FF9FD4" }}
+            className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider transition-all duration-150 hover:opacity-100"
+            style={{ color: "rgba(255,159,212,0.75)" }}
             aria-expanded={commentsExpanded}
           >
             <ChevronDown
@@ -1264,7 +1281,7 @@ function RequestCard({
           </button>
 
           {commentsExpanded && (
-            <div className="mt-2 flex flex-col gap-2">
+            <div className="mt-2.5 flex flex-col gap-2">
               {request.comments!.map((cmt) => (
                 <CommentItem
                   key={cmt.commentId}
@@ -1381,10 +1398,10 @@ function CommentItem({
     <div
       className="flex flex-col gap-1"
       style={{
-        background: "rgba(0,0,0,0.2)",
-        padding: "8px 12px",
+        background: "rgba(255,255,255,0.04)",
+        padding: "10px 12px",
         borderRadius: "4px",
-        borderLeft: "2px solid rgba(255,159,212,0.2)",
+        borderLeft: "2px solid rgba(255,159,212,0.35)",
       }}
     >
       {isEditing ? (
@@ -1427,14 +1444,15 @@ function CommentItem({
       ) : (
         <>
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="text-foreground text-xs font-medium opacity-90">{comment.requester}</span>
+        <span className="text-xs font-semibold" style={{ color: "#d8d8f0" }}>{comment.requester}</span>
         <time
           dateTime={
             resolveCommentCreatedAt(comment) > 0
               ? new Date(resolveCommentCreatedAt(comment)).toISOString()
               : undefined
           }
-          className="text-muted-foreground text-[10px] opacity-50 tabular-nums"
+          className="text-[10px] tabular-nums"
+          style={{ color: "#6060a0" }}
         >
           {formatCommentTime(comment)}
         </time>
@@ -1442,7 +1460,7 @@ function CommentItem({
 
       <div className="flex items-start gap-2">
         {comment.note ? (
-          <p className="flex-1 min-w-0 text-muted-foreground text-xs leading-relaxed opacity-80 break-words">
+          <p className="flex-1 min-w-0 text-xs leading-relaxed break-words" style={{ color: "#b0b0d8" }}>
             {comment.note}
           </p>
         ) : (
@@ -1482,7 +1500,7 @@ function CommentItem({
       </div>
 
       {replies.length > 0 && (
-        <div className="mt-2 flex flex-col gap-1.5 pl-2 border-l border-white/5">
+        <div className="mt-2 flex flex-col gap-1.5 pl-2.5" style={{ borderLeft: "1px solid rgba(255,255,255,0.1)" }}>
           {replies.map((reply) => (
             <ReplyItem
               key={reply.replyId}
@@ -1644,7 +1662,7 @@ function ReplyItem({
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center gap-1.5">
-        <span className="text-foreground text-[11px] font-medium opacity-80">
+        <span className="text-[11px] font-medium" style={{ color: "#c0c0e8" }}>
           {reply.requester}
         </span>
         <time
@@ -1653,13 +1671,14 @@ function ReplyItem({
               ? new Date(resolveReplyCreatedAt(reply)).toISOString()
               : undefined
           }
-          className="text-muted-foreground text-[10px] opacity-40 tabular-nums"
+          className="text-[10px] tabular-nums"
+          style={{ color: "#555580" }}
         >
           {formatReplyTime(reply)}
         </time>
       </div>
       <div className="flex items-start gap-2">
-        <p className="flex-1 min-w-0 text-muted-foreground text-[11px] leading-relaxed opacity-75 break-words">
+        <p className="flex-1 min-w-0 text-[11px] leading-relaxed break-words" style={{ color: "#9898c8" }}>
           {reply.note}
         </p>
         <div className="flex flex-shrink-0 items-center gap-0.5">
