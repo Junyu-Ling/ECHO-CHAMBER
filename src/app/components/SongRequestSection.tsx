@@ -16,14 +16,11 @@ import {
   VOTE_NOTE,
   VOTE_REQUESTER,
   VOTE_ADD_TITLE,
-  VOTE_ALREADY_PARTICIPATED,
   VOTE_CANCEL_TITLE,
-  VOTE_PARTICIPATED_TITLE,
 } from "../copy/voteCopy";
 import {
   findMyVoteComment,
   getMyCommentsOnTrack,
-  hasParticipatedOnTrack,
   isVoteComment,
 } from "../lib/voteParticipation";
 import {
@@ -630,17 +627,20 @@ export function SongRequestSection() {
       return;
     }
 
-    const myVote = findMyVoteComment(existingReq.comments, clientId);
+    // 我在这首歌的参与记录（推荐 / 留言 / 投票都算「我的一票」）
+    const myComments = getMyCommentsOnTrack(existingReq.comments, clientId);
+    const myParticipation =
+      findMyVoteComment(existingReq.comments, clientId) || myComments[0];
 
-    // 已投过票 → 再点一次取消投票
-    if (myVote) {
+    // 已参与 → 再点一次取消（移除我的那条记录），不论是纯投票还是带留言的推荐
+    if (myParticipation) {
       markTrackOptimistic(id);
       const voteSnapshot = requests;
-      applyCommentRemoval(id, myVote.commentId);
+      applyCommentRemoval(id, myParticipation.commentId);
       clearMyParticipation(id);
       void (async () => {
         try {
-          await removeCommentOnServer(id, myVote.commentId);
+          await removeCommentOnServer(id, myParticipation.commentId);
         } catch (err) {
           console.error("Error canceling vote:", err);
           setRequests(voteSnapshot);
@@ -649,13 +649,6 @@ export function SongRequestSection() {
           voteInFlightRef.current.delete(id);
         }
       })();
-      return;
-    }
-
-    // 已留言（非纯投票）→ 静默忽略，不弹提示，不添加新票
-    const myComments = getMyCommentsOnTrack(existingReq.comments, clientId);
-    if (myComments.length > 0) {
-      voteInFlightRef.current.delete(id);
       return;
     }
 
@@ -1148,16 +1141,12 @@ function RequestCard({
   }, [isInteractingOnTrack]);
 
   const pct = Math.round((request.votes / maxVotes) * 100);
-  const myVote = findMyVoteComment(request.comments, clientId);
-  const hasTextParticipation =
-    !myVote && hasParticipatedOnTrack(request.comments, clientId);
-  const voteHighlight =
-    !!myVote || participatedHighlight === true || hasTextParticipation;
-  const voteTitle = myVote
-    ? VOTE_CANCEL_TITLE
-    : hasTextParticipation
-      ? VOTE_PARTICIPATED_TITLE
-      : VOTE_ADD_TITLE;
+  const myParticipation =
+    findMyVoteComment(request.comments, clientId) ||
+    getMyCommentsOnTrack(request.comments, clientId)[0];
+  const hasParticipated = !!myParticipation || participatedHighlight === true;
+  const voteHighlight = hasParticipated;
+  const voteTitle = hasParticipated ? VOTE_CANCEL_TITLE : VOTE_ADD_TITLE;
 
   return (
     <div
