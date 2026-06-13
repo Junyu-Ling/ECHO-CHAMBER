@@ -2,7 +2,6 @@ import { SectionHeader } from "./SectionHeader";
 import kimPhoto from "../../imports/71f668c2a7fba05551d1d606f7d8071d.jpg";
 import nancyPhoto from "../../imports/lQLPKdR7pV4uPB_NAmbNAbuwfOwc6P3wB3IJ8mfbtWyQAA_443_614.png";
 import baiQianhePhoto from "../../assets/members/bai-qianhe.webp";
-import guChenyangPhoto from "../../assets/members/gu-chenyang.webp";
 import huangZiyiPhoto from "../../assets/members/huang-ziyi.webp";
 import alexanderPhoto from "../../imports/ad81c106b9718346d60bf647dce4c108.jpg";
 import mikePhoto from "../../imports/bcc1145200430316445221f235a19070.jpg";
@@ -80,15 +79,6 @@ const members = [
     roleEn: "中国部 G11C1",
     bio: "随心所欲 基本能尝试所有音乐形式的鼓手+只会看五线谱的键盘手 LOL",
     photo: richardPhoto,
-  },
-  {
-    id: 7,
-    name: "顾辰炀",
-    nameEn: "GRACE",
-    role: "主唱",
-    roleEn: "中国部 G12C1",
-    bio: "舞台上的光影捕手，用歌声传递着不屈的青春力量",
-    photo: guChenyangPhoto,
   },
   {
     id: 8,

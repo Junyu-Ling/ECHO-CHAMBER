@@ -296,7 +296,7 @@ const memberSources = [
       cropZoom: 1.45,
     },
   ],
-  ["gu-chenyang.png", "gu-chenyang.webp", {}],
+  ],
   ["huang-ziyi.png", "huang-ziyi.webp", { position: "centre", maxUpscale: 2.2, cropZoom: 1.08 }],
   ["liu-yiyang.png", "liu-yiyang.webp", { position: "centre", maxUpscale: 2.2 }],
   ["hu-yuqin.png", "hu-yuqin.webp", { position: "centre", maxUpscale: 2, cropZoom: 1.04 }],
