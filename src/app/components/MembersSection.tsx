@@ -6,7 +6,6 @@ import huangZiyiPhoto from "../../assets/members/huang-ziyi.webp";
 import alexanderPhoto from "../../imports/ad81c106b9718346d60bf647dce4c108.jpg";
 import mikePhoto from "../../imports/bcc1145200430316445221f235a19070.jpg";
 import richardPhoto from "../../assets/members/richard.webp";
-import shenXinyuPhoto from "../../assets/members/shen-xinyu.webp";
 import ellisPhoto from "../../assets/members/ellis.webp";
 import gongLaoshiPhoto from "../../assets/members/gong-laoshi.webp";
 import liuYiyangPhoto from "../../assets/members/liu-yiyang.webp";
@@ -89,15 +88,6 @@ const members = [
     bio: "空灵的声音，像夜空中的星光，点缀在主旋律的每一个角落",
     photo: huYuqinPhoto,
     photoPosition: "center center",
-  },
-  {
-    id: 9,
-    name: "沈鑫虞",
-    nameEn: "STEVEN",
-    role: "键盘手",
-    roleEn: "中国部 G12C1",
-    bio: "用沉稳的音符托起每一次情感的爆发，乐队坚实的后盾",
-    photo: shenXinyuPhoto,
   },
   {
     id: 11,

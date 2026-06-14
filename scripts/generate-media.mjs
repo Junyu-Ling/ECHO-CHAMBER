@@ -281,7 +281,6 @@ async function processMemberPhoto(inputPath, outputPath, opts = {}) {
 
 const memberSources = [
   ["gong-laoshi.png", "gong-laoshi.webp", { position: "centre", sharpen: false, cropZoom: 1.06 }],
-  ["shen-xinyu.png", "shen-xinyu.webp", {}],
   ["richard.png", "richard.webp", {}],
   ["ellis.png", "ellis.webp", {}],
   [
