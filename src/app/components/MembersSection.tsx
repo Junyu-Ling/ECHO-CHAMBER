@@ -10,6 +10,7 @@ import ellisPhoto from "../../assets/members/ellis.webp";
 import gongLaoshiPhoto from "../../assets/members/gong-laoshi.webp";
 import liuYiyangPhoto from "../../assets/members/liu-yiyang.webp";
 import huYuqinPhoto from "../../assets/members/hu-yuqin.webp";
+import houqinPhoto from "../../assets/members/houqin.webp";
 import { ImageWithFallback } from "./ImageWithFallback";
 
 const members = [
@@ -119,6 +120,16 @@ const members = [
     photo: huangZiyiPhoto,
     photoPosition: "center center",
     photoZoom: 1.06,
+  },
+  {
+    id: 14,
+    name: "",
+    nameEn: "",
+    role: "后勤",
+    roleEn: "",
+    bio: "默默打理幕后一切，让乐队每一次登场都井然有序",
+    photo: houqinPhoto,
+    photoPosition: "center 48%",
   }
 ];
 
@@ -158,7 +169,7 @@ function MemberCard({ member }: { member: (typeof members)[number] }) {
       <div className="relative overflow-hidden" style={{ aspectRatio: "3/4" }}>
         <ImageWithFallback
           src={member.photo}
-          alt={member.name}
+          alt={member.name || member.role}
           className={`relative w-full h-full object-cover transition-transform duration-700 ${
             "photoZoom" in member && member.photoZoom
               ? "group-hover:scale-[1.08]"
@@ -213,17 +224,20 @@ function MemberCard({ member }: { member: (typeof members)[number] }) {
               fontFamily: "'Anton', sans-serif",
               fontSize: "1.5rem",
               letterSpacing: "0.05em",
-              color: isLeader ? "#FF9FD4" : "white"
+              color: isLeader ? "#FF9FD4" : "white",
+              minHeight: member.name ? undefined : "0.5rem",
             }}
           >
             {member.name}
           </h3>
+          {(member.nameEn || member.roleEn) && (
           <p
             className="text-muted-foreground text-xs mt-0.5 uppercase tracking-widest"
             style={{ opacity: 0.6 }}
           >
-            {member.nameEn} {member.roleEn ? `· ${member.roleEn}` : ''}
+            {member.nameEn}{member.nameEn && member.roleEn ? " · " : ""}{member.roleEn}
           </p>
+          )}
         </div>
       </div>
 
