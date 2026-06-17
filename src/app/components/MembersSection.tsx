@@ -9,7 +9,6 @@ import richardPhoto from "../../assets/members/richard.webp";
 import ellisPhoto from "../../assets/members/ellis.webp";
 import gongLaoshiPhoto from "../../assets/members/gong-laoshi.webp";
 import liuYiyangPhoto from "../../assets/members/liu-yiyang.webp";
-import huYuqinPhoto from "../../assets/members/hu-yuqin.webp";
 import houqinPhoto from "../../assets/members/houqin.webp";
 import { ImageWithFallback } from "./ImageWithFallback";
 
@@ -79,16 +78,6 @@ const members = [
     roleEn: "中国部 G11C1",
     bio: "随心所欲 基本能尝试所有音乐形式的鼓手+只会看五线谱的键盘手 LOL",
     photo: richardPhoto,
-  },
-  {
-    id: 8,
-    name: "胡钰沁",
-    nameEn: "LANYA",
-    role: "主唱 / 尤克里里",
-    roleEn: "中国部 G12C1",
-    bio: "空灵的声音，像夜空中的星光，点缀在主旋律的每一个角落",
-    photo: huYuqinPhoto,
-    photoPosition: "center center",
   },
   {
     id: 11,
