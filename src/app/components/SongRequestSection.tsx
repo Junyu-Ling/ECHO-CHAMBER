@@ -788,9 +788,9 @@ export function SongRequestSection() {
       <div className="max-w-5xl mx-auto">
         <SectionHeader label="点歌留言" title="SONG REQUEST" />
 
-        <div className="mt-14 grid grid-cols-1 lg:grid-cols-5 gap-10">
-          {/* Left: Form */}
-          <div className="lg:col-span-2">
+        <div className="mt-14 flex flex-col gap-10">
+          {/* 点歌表单：始终在上 */}
+          <div className="w-full">
             <div
               className="relative overflow-hidden"
               style={{
@@ -925,8 +925,8 @@ export function SongRequestSection() {
             </div>
           </div>
 
-          {/* Right: List */}
-          <div className="lg:col-span-3">
+          {/* 歌单列表：始终在下 */}
+          <div className="w-full min-w-0">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                 <p className="text-sm" style={{ color: "#9090b0" }}>
