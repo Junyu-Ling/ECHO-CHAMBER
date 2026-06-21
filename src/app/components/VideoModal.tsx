@@ -1,7 +1,7 @@
 import { X, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { resolveVideoPlayUrl } from "../lib/resolveVideoUrl";
+import { getVideoUrl } from "../copy/videoUrls";
 
 interface Video {
   id: number;
@@ -20,7 +20,7 @@ interface VideoModalProps {
 
 export function VideoModal({ video, onClose }: VideoModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [playUrl, setPlayUrl] = useState<string | null>(null);
+  const playUrl = getVideoUrl(video.id);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -38,27 +38,10 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
   }, [onClose]);
 
   useEffect(() => {
-    let cancelled = false;
     setPlaying(false);
     setLoading(true);
     setError(false);
-    setPlayUrl(null);
-
-    resolveVideoPlayUrl(video.id)
-      .then((url) => {
-        if (!cancelled) setPlayUrl(url);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLoading(false);
-          setError(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [video.id]);
+  }, [video.id, playUrl]);
 
   const tryAutoplay = async () => {
     const el = videoRef.current;
@@ -83,13 +66,10 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
   const retry = () => {
     setError(false);
     setLoading(true);
-    setPlayUrl(null);
-    resolveVideoPlayUrl(video.id)
-      .then((url) => setPlayUrl(url))
-      .catch(() => {
-        setLoading(false);
-        setError(true);
-      });
+    const el = videoRef.current;
+    if (el) {
+      el.load();
+    }
   };
 
   const modal = (
@@ -140,28 +120,26 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
               </button>
             </div>
           ) : (
-            playUrl && (
-              <video
-                ref={videoRef}
-                key={playUrl}
-                src={playUrl}
-                poster={video.poster}
-                controls
-                autoPlay
-                playsInline
-                className="relative z-[1] w-full h-full object-cover"
-                preload="auto"
-                onCanPlay={tryAutoplay}
-                onPlaying={() => {
-                  setPlaying(true);
-                  setLoading(false);
-                }}
-                onError={() => {
-                  setLoading(false);
-                  setError(true);
-                }}
-              />
-            )
+            <video
+              ref={videoRef}
+              key={playUrl}
+              src={playUrl}
+              poster={video.poster}
+              controls
+              autoPlay
+              playsInline
+              className="relative z-[1] w-full h-full object-cover"
+              preload="metadata"
+              onCanPlay={tryAutoplay}
+              onPlaying={() => {
+                setPlaying(true);
+                setLoading(false);
+              }}
+              onError={() => {
+                setLoading(false);
+                setError(true);
+              }}
+            />
           )}
         </div>
 

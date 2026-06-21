@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { existsSync, unlinkSync } from "node:fs";
+import { existsSync, unlinkSync, statSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ const importsDir = path.join(root, "src/imports");
 const memberSourcesDir = path.join(root, "scripts/member-sources");
 const assetsDir = path.join(root, "src/assets");
 const postersDir = path.join(assetsDir, "posters");
+const webVideosDir = path.join(root, "public/videos");
 const fallbackHero = path.join(root, "src/imports/fc9ade432714e08066f2002932e6f98b-1.jpg");
 const heroSrc = path.join(memberSourcesDir, "hero-cover.png");
 
@@ -23,6 +24,57 @@ const videoPosterSources = [
   [2, path.join(importsDir, "_______1_-2.mp4")],
   [3, path.join(importsDir, "_________1_-1.mp4")],
 ];
+
+/** H.264 web rendition: 720p max + faststart; small sources copied without re-encode. */
+function transcodeWebVideo(videoPath, mp4Out) {
+  const sizeMb = statSync(videoPath).size / 1024 / 1024;
+  const copyOnly = sizeMb < 30;
+
+  const args = copyOnly
+    ? [
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        videoPath,
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        mp4Out,
+      ]
+    : [
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        videoPath,
+        "-vf",
+        "scale='min(1280,iw)':-2",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "26",
+        "-movflags",
+        "+faststart",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "96k",
+        "-ac",
+        "2",
+        mp4Out,
+      ];
+
+  const result = spawnSync(ffmpegPath, args, { encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || `ffmpeg transcode failed for ${videoPath}`);
+  }
+}
 
 async function extractVideoPoster(videoPath, webpOut) {
   if (!ffmpegPath) {
@@ -61,6 +113,7 @@ async function extractVideoPoster(videoPath, webpOut) {
 }
 
 await mkdir(postersDir, { recursive: true });
+await mkdir(webVideosDir, { recursive: true });
 await mkdir(path.join(assetsDir, "members"), { recursive: true });
 
 await sharp(heroSource)
@@ -86,6 +139,15 @@ for (const [id, videoPath] of videoPosterSources) {
   }
   console.log(`Extracting poster for video ${id}...`);
   await extractVideoPoster(videoPath, path.join(postersDir, `video-${id}.webp`));
+
+  const webOut = path.join(webVideosDir, `${id}.mp4`);
+  console.log(`Transcoding web video ${id} → public/videos/${id}.mp4 ...`);
+  transcodeWebVideo(videoPath, webOut);
+  if (existsSync(webOut)) {
+    const { stat } = await import("node:fs/promises");
+    const s = await stat(webOut);
+    console.log(`  done: ${(s.size / 1024 / 1024).toFixed(1)} MB`);
+  }
 }
 
 const MEMBER_TARGET_W = 960;

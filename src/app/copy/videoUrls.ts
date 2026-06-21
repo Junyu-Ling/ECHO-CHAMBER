@@ -1,17 +1,7 @@
-const cdnBase =
-  import.meta.env.VITE_VIDEO_CDN_BASE ??
-  "https://media.githubusercontent.com/media/Miyeon-0131/ECHO-CHAMBER/ECHO-CHAMBER/src/imports";
-
-const prodCdn: Record<number, string> = {
-  1: import.meta.env.VITE_VIDEO_1 ?? `${cdnBase}/__.mp4`,
-  2: import.meta.env.VITE_VIDEO_2 ?? `${cdnBase}/_______1_-2.mp4`,
-  3: import.meta.env.VITE_VIDEO_3 ?? `${cdnBase}/_________1_-1.mp4`,
-};
-
-const devLocal: Record<number, string> = {
-  1: new URL("../../imports/__.mp4", import.meta.url).href,
-  2: new URL("../../imports/_______1_-2.mp4", import.meta.url).href,
-  3: new URL("../../imports/_________1_-1.mp4", import.meta.url).href,
+const webRenditions: Record<number, string> = {
+  1: "/videos/1.mp4",
+  2: "/videos/2.mp4",
+  3: "/videos/3.mp4",
 };
 
 const envOverride: Record<number, string | undefined> = {
@@ -20,12 +10,11 @@ const envOverride: Record<number, string | undefined> = {
   3: import.meta.env.VITE_VIDEO_3,
 };
 
-/** Dev: local files. Prod: public GitHub LFS CDN (repo is public). */
+/** Site-hosted H.264 web renditions (public/videos). Override via VITE_VIDEO_* if needed. */
 export function getVideoUrl(id: number): string {
-  if (import.meta.env.DEV) return devLocal[id];
   const custom = envOverride[id];
   if (custom) return custom;
-  return prodCdn[id];
+  return webRenditions[id];
 }
 
 export const videoSources: Record<number, string> = {

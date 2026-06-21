@@ -5,6 +5,7 @@ import { VideoThumbnail } from "./VideoThumbnail";
 import { SectionHeader } from "./SectionHeader";
 import { videoMeta, sectionLabel, dateVenueSep } from "../copy/videoMeta";
 import { getVideoUrl } from "../copy/videoUrls";
+import { prefetchVideo } from "../lib/resolveVideoUrl";
 import { videoPosters } from "../copy/videoPosters";
 
 const videos = videoMeta.map((v) => ({
@@ -55,7 +56,10 @@ function VideoCard({
     <button
       type="button"
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => {
+        setHovered(true);
+        prefetchVideo(video.id);
+      }}
       onMouseLeave={() => setHovered(false)}
       className="text-left group w-full cursor-pointer"
       style={{ background: "#0E0E1C", border: "1px solid rgba(255,255,255,0.07)" }}
