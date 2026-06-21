@@ -17,6 +17,12 @@ importers:
       '@emotion/styled':
         specifier: 11.14.1
         version: 11.14.1(@emotion/react@11.14.0(@types/react@19.2.16)(react@18.3.1))(@types/react@19.2.16)(react@18.3.1)
+      '@fontsource/anton':
+        specifier: ^5.2.7
+        version: 5.2.7
+      '@fontsource/dm-sans':
+        specifier: ^5.2.8
+        version: 5.2.8
       '@mui/icons-material':
         specifier: 7.3.5
         version: 7.3.5(@mui/material@7.3.5(@emotion/react@11.14.0(@types/react@19.2.16)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.16)(react@18.3.1))(@types/react@19.2.16)(react@18.3.1))(@types/react@19.2.16)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@19.2.16)(react@18.3.1)
@@ -564,6 +570,12 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
+
+  '@fontsource/anton@5.2.7':
+    resolution: {integrity: sha512-fiPl7Kx0HC50Ws2uRkNC+QLVK8xPFUB9E+IxFdSA6tbNTZWe7HOq8IxYqkERIzsIBvYj6nrU+7uNMUM9vNLxig==}
+
+  '@fontsource/dm-sans@5.2.8':
+    resolution: {integrity: sha512-tlovG42m9ESG28WiHpLq3F5umAlm64rv0RkqTbYowRn70e9OlRr5a3yTJhrhrY+k5lftR/OFJjPzOLQzk8EfCA==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -2881,6 +2893,10 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
 
   '@floating-ui/utils@0.2.11': {}
+
+  '@fontsource/anton@5.2.7': {}
+
+  '@fontsource/dm-sans@5.2.8': {}
 
   '@img/colour@1.1.0': {}
 
