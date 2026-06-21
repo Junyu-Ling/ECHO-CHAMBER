@@ -1,7 +1,1 @@
-/* Self-hosted fonts — avoids Google Fonts blocking in mainland China (CSS/theme load consistently). */
-@import "@fontsource/anton/400.css";
-@import "@fontsource/dm-sans/300.css";
-@import "@fontsource/dm-sans/400.css";
-@import "@fontsource/dm-sans/500.css";
-@import "@fontsource/dm-sans/700.css";
-@import "@fontsource/dm-sans/400-italic.css";
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&display=swap');

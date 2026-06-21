@@ -44,14 +44,9 @@ export function MusicSearchInput({ onSelect, value, onChange, selectedTrackId }:
     const reqId = ++reqIdRef.current;
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        q,
-        limit: "8",
-      });
-      const url = import.meta.env.PROD
-        ? `/api/music-search?${params}`
-        : `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=8&country=CN`;
-      const res = await fetch(url);
+      const res = await fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=8&country=CN`
+      );
       const data = await res.json();
       // 丢弃过期请求的结果，避免乱序覆盖
       if (reqId !== reqIdRef.current) return;
