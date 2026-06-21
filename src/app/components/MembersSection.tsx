@@ -112,10 +112,10 @@ const members = [
   },
   {
     id: 14,
-    name: "",
+    name: "倪千媛",
     nameEn: "",
     role: "后勤",
-    roleEn: "",
+    roleEn: "中国部 G10C2",
     bio: "默默打理幕后一切，让乐队每一次登场都井然有序",
     photo: houqinPhoto,
     photoPosition: "center 48%",
