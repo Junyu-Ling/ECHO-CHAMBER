@@ -1,2 +1,4 @@
 *.mp4 filter=lfs diff=lfs merge=lfs -text
 *.mov filter=lfs diff=lfs merge=lfs -text
+# Web renditions must be plain git blobs — Vercel does not pull LFS on deploy.
+public/videos/** -filter -diff -merge

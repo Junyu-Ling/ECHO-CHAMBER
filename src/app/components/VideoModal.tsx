@@ -129,7 +129,8 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
               autoPlay
               playsInline
               className="relative z-[1] w-full h-full object-cover"
-              preload="metadata"
+              preload="auto"
+              onLoadedData={tryAutoplay}
               onCanPlay={tryAutoplay}
               onPlaying={() => {
                 setPlaying(true);
