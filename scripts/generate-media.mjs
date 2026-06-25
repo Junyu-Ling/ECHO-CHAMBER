@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { existsSync, unlinkSync, statSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,50 +25,43 @@ const videoPosterSources = [
   [3, path.join(importsDir, "_________1_-1.mp4")],
 ];
 
-/** H.264 web rendition: 720p max + faststart; small sources copied without re-encode. */
+/** H.264 web rendition: 480p-class, faststart, small for global fast start. */
 function transcodeWebVideo(videoPath, mp4Out) {
-  const sizeMb = statSync(videoPath).size / 1024 / 1024;
-  const copyOnly = sizeMb < 30;
-
-  const args = copyOnly
-    ? [
-        "-y",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        videoPath,
-        "-c",
-        "copy",
-        "-movflags",
-        "+faststart",
-        mp4Out,
-      ]
-    : [
-        "-y",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        videoPath,
-        "-vf",
-        "scale='min(1280,iw)':-2",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-crf",
-        "26",
-        "-movflags",
-        "+faststart",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "96k",
-        "-ac",
-        "2",
-        mp4Out,
-      ];
+  const args = [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    videoPath,
+    "-vf",
+    "scale='min(720,iw)':-2",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "slow",
+    "-crf",
+    "31",
+    "-profile:v",
+    "main",
+    "-level",
+    "3.1",
+    "-g",
+    "48",
+    "-keyint_min",
+    "48",
+    "-sc_threshold",
+    "0",
+    "-movflags",
+    "+faststart",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "64k",
+    "-ac",
+    "2",
+    mp4Out,
+  ];
 
   const result = spawnSync(ffmpegPath, args, { encoding: "utf8" });
   if (result.status !== 0) {
@@ -113,11 +106,13 @@ async function extractVideoPoster(videoPath, webpOut) {
 }
 
 const skipVideos = process.env.SKIP_VIDEOS === "1";
+const skipNonVideos = process.env.SKIP_NON_VIDEOS === "1";
 
 await mkdir(postersDir, { recursive: true });
 await mkdir(webVideosDir, { recursive: true });
 await mkdir(path.join(assetsDir, "members"), { recursive: true });
 
+if (!skipNonVideos) {
 await sharp(heroSource)
   .rotate()
   .resize(1920, null, {
@@ -133,6 +128,7 @@ await sharp(heroSource)
   .blur(4)
   .webp({ quality: 60 })
   .toFile(path.join(assetsDir, "hero-placeholder.webp"));
+}
 
 for (const [id, videoPath] of videoPosterSources) {
   if (skipVideos) break;
@@ -369,6 +365,7 @@ const memberSources = [
   ["liu-yiyang.png", "liu-yiyang.webp", { position: "centre", maxUpscale: 2.2, sharpen: false, focusY: 0.46, cropZoom: 1.1 }],
 ];
 
+if (!skipNonVideos) {
 for (const [input, output, opts] of memberSources) {
   const inputPath = path.join(memberSourcesDir, input);
   if (!existsSync(inputPath)) {
@@ -380,6 +377,7 @@ for (const [input, output, opts] of memberSources) {
     path.join(assetsDir, "members", output),
     opts
   );
+}
 }
 
 console.log("Generated hero, video frame posters, and member webp assets");

@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Calendar } from "lucide-react";
 import { VideoModal } from "./VideoModal";
 import { VideoThumbnail } from "./VideoThumbnail";
 import { SectionHeader } from "./SectionHeader";
 import { videoMeta, sectionLabel, dateVenueSep } from "../copy/videoMeta";
 import { getVideoUrl } from "../copy/videoUrls";
-import { prefetchVideo } from "../lib/resolveVideoUrl";
+import { warmAllVideos, warmVideo } from "../lib/resolveVideoUrl";
 import { videoPosters } from "../copy/videoPosters";
 
 const videos = videoMeta.map((v) => ({
@@ -16,6 +16,18 @@ const videos = videoMeta.map((v) => ({
 
 export function VideosSection() {
   const [selected, setSelected] = useState<(typeof videos)[number] | null>(null);
+
+  useEffect(() => {
+    warmVideo(videos[0]?.id ?? 1, "high");
+
+    const idleWarm = () => warmAllVideos("low");
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(idleWarm, { timeout: 2000 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = window.setTimeout(idleWarm, 800);
+    return () => clearTimeout(t);
+  }, []);
 
   return (
     <section id="videos" className="py-24 px-6" style={{ background: "#07070C" }}>
@@ -52,14 +64,16 @@ function VideoCard({
 }) {
   const [hovered, setHovered] = useState(false);
 
+  const handleWarm = () => warmVideo(video.id, "high");
+
   return (
     <button
       type="button"
       onClick={onClick}
-      onMouseEnter={() => {
-        setHovered(true);
-        prefetchVideo(video.id);
-      }}
+      onMouseEnter={handleWarm}
+      onFocus={handleWarm}
+      onTouchStart={handleWarm}
+      onPointerDown={handleWarm}
       onMouseLeave={() => setHovered(false)}
       className="text-left group w-full cursor-pointer"
       style={{ background: "#0E0E1C", border: "1px solid rgba(255,255,255,0.07)" }}

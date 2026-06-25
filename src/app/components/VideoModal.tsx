@@ -2,6 +2,7 @@ import { X, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getVideoUrl } from "../copy/videoUrls";
+import { warmVideo } from "../lib/resolveVideoUrl";
 
 interface Video {
   id: number;
@@ -20,9 +21,10 @@ interface VideoModalProps {
 
 export function VideoModal({ video, onClose }: VideoModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const playAttempted = useRef(false);
   const playUrl = getVideoUrl(video.id);
   const [playing, setPlaying] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -31,30 +33,35 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
     };
     document.addEventListener("keydown", handler);
     document.body.style.overflow = "hidden";
+    warmVideo(video.id, "high");
     return () => {
       document.removeEventListener("keydown", handler);
       document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, [onClose, video.id]);
 
   useEffect(() => {
+    playAttempted.current = false;
     setPlaying(false);
-    setLoading(true);
+    setLoading(false);
     setError(false);
   }, [video.id, playUrl]);
 
-  const tryAutoplay = async () => {
+  const tryPlay = async () => {
+    if (playAttempted.current) return;
     const el = videoRef.current;
     if (!el) return;
+    playAttempted.current = true;
+
     try {
+      el.muted = true;
       await el.play();
       setPlaying(true);
       setLoading(false);
+      el.muted = false;
     } catch {
       try {
-        el.muted = true;
         await el.play();
-        el.muted = false;
         setPlaying(true);
         setLoading(false);
       } catch {
@@ -63,13 +70,17 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
     }
   };
 
+  const onWaiting = () => {
+    if (!playing) setLoading(true);
+  };
+
   const retry = () => {
     setError(false);
     setLoading(true);
+    playAttempted.current = false;
+    warmVideo(video.id, "high");
     const el = videoRef.current;
-    if (el) {
-      el.load();
-    }
+    if (el) el.load();
   };
 
   const modal = (
@@ -98,11 +109,11 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
             src={video.poster}
             alt=""
             className="absolute inset-0 w-full h-full object-cover"
-            style={{ opacity: playing ? 0 : 1, transition: "opacity 0.3s" }}
+            style={{ opacity: playing ? 0 : 1, transition: "opacity 0.25s" }}
           />
 
           {loading && !error && (
-            <div className="absolute inset-0 flex items-center justify-center z-10">
+            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
               <Loader2 className="animate-spin text-[#FF9FD4]" size={36} />
             </div>
           )}
@@ -127,15 +138,17 @@ export function VideoModal({ video, onClose }: VideoModalProps) {
               poster={video.poster}
               controls
               autoPlay
+              muted
               playsInline
               className="relative z-[1] w-full h-full object-cover"
               preload="auto"
-              onLoadedData={tryAutoplay}
-              onCanPlay={tryAutoplay}
+              onLoadedMetadata={tryPlay}
+              onCanPlay={tryPlay}
               onPlaying={() => {
                 setPlaying(true);
                 setLoading(false);
               }}
+              onWaiting={onWaiting}
               onError={() => {
                 setLoading(false);
                 setError(true);
