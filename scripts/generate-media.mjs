@@ -112,6 +112,8 @@ async function extractVideoPoster(videoPath, webpOut) {
   }
 }
 
+const skipVideos = process.env.SKIP_VIDEOS === "1";
+
 await mkdir(postersDir, { recursive: true });
 await mkdir(webVideosDir, { recursive: true });
 await mkdir(path.join(assetsDir, "members"), { recursive: true });
@@ -133,6 +135,7 @@ await sharp(heroSource)
   .toFile(path.join(assetsDir, "hero-placeholder.webp"));
 
 for (const [id, videoPath] of videoPosterSources) {
+  if (skipVideos) break;
   if (!existsSync(videoPath)) {
     console.warn(`Skip video-${id} poster: missing ${videoPath}`);
     continue;
@@ -363,7 +366,7 @@ const memberSources = [
     { position: "centre", maxUpscale: 2.2, focusX: 0.5, focusY: 0.48, cropZoom: 1.08 },
   ],
   ["huang-ziyi.png", "huang-ziyi.webp", { position: "centre", maxUpscale: 2.2, cropZoom: 1.08 }],
-  ["liu-yiyang.png", "liu-yiyang.webp", { position: "centre", maxUpscale: 2.2 }],
+  ["liu-yiyang.png", "liu-yiyang.webp", { position: "centre", maxUpscale: 2.2, sharpen: false, focusY: 0.46, cropZoom: 1.1 }],
 ];
 
 for (const [input, output, opts] of memberSources) {

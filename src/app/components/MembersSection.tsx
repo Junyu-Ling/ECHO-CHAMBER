@@ -41,7 +41,7 @@ const members = [
     roleEn: "中国部 G11C2",
     bio: "鼓手兼电吉他手 想要练就极致的 riff 和犹如节拍器一样的节奏",
     photo: liuYiyangPhoto,
-    photoPosition: "center 40%",
+    photoPosition: "center 45%",
   },
   {
     id: 3,
