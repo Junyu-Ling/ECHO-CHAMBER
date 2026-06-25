@@ -87,23 +87,6 @@ export default function App() {
       <Footer />
 
       <div
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-md border transition-all duration-500"
-        style={{
-          background: "rgba(14, 14, 28, 0.85)",
-          borderColor: "rgba(255, 159, 212, 0.35)",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-        }}
-      >
-        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">技术支持</span>
-        <span
-          className="text-[11px] font-bold"
-          style={{ color: "#FF9FD4", fontFamily: "'Anton', sans-serif", letterSpacing: "0.04em" }}
-        >
-          灵俊宇
-        </span>
-      </div>
-
-      <div
         className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-md border transition-all duration-500 group hover:scale-105"
         style={{
           background: "rgba(14, 14, 28, 0.8)",
